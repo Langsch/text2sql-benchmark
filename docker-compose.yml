@@ -1,0 +1,37 @@
+services:
+  postgresql:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-bird}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bird}
+      POSTGRES_DB: ${POSTGRES_DB:-bird}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bird"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mariadb:
+    image: mariadb:11
+    environment:
+      MARIADB_USER: ${MARIADB_USER:-bird}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:-bird}
+      MARIADB_DATABASE: ${MARIADB_DB:-bird}
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-root}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pg_data:
+  mariadb_data:

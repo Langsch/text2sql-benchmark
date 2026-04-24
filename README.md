@@ -6,7 +6,7 @@
 
 ## Resumo
 
-Este projeto implementa um framework de benchmark para avaliar e comparar a capacidade de cinco Large Language Models (LLMs) na tarefa de Text-to-SQL, geração automática de consultas SQL a partir de perguntas em linguagem natural. A avaliação contempla quatro SGBDs (PostgreSQL, MySQL, MariaDB e SQLite) e mede tanto a **corretude** das queries geradas (Execution Accuracy e Exact Match) quanto sua **eficiência** de execução (análise do plano de query e latência). Os resultados são consolidados em relatórios comparativos que subsidiam a análise do Trabalho de Conclusão de Curso.
+Este projeto implementa um framework de benchmark para avaliar e comparar a capacidade de cinco Large Language Models (LLMs) na tarefa de Text-to-SQL, geração automática de consultas SQL a partir de perguntas em linguagem natural. A avaliação contempla três SGBDs (PostgreSQL, MariaDB e SQLite) e mede tanto a **corretude** das queries geradas (Execution Accuracy e Exact Match) quanto sua **eficiência** de execução (análise do plano de query e latência). Os resultados são consolidados em relatórios comparativos que subsidiam a análise do Trabalho de Conclusão de Curso.
 
 ---
 
@@ -18,7 +18,7 @@ A capacidade de consultar bancos de dados relacionais em linguagem natural democ
 
 ### O problema da variabilidade
 
-LLMs diferentes têm exposição distinta a dialetos SQL durante o treinamento. O SQL do PostgreSQL não é o mesmo do SQLite, janelas temporais, funções de agregação, operadores de texto e comportamento de tipos variam entre SGBDs. Um modelo pode gerar SQL correto para PostgreSQL mas inválido ou subótimo para MySQL. Essa variabilidade cruzada (modelo × SGBD) é o objeto central deste benchmark.
+LLMs diferentes têm exposição distinta a dialetos SQL durante o treinamento. O SQL do PostgreSQL não é o mesmo do SQLite, janelas temporais, funções de agregação, operadores de texto e comportamento de tipos variam entre SGBDs. Um modelo pode gerar SQL correto para PostgreSQL mas inválido ou subótimo para MariaDB. Essa variabilidade cruzada (modelo × SGBD) é o objeto central deste benchmark.
 
 ### Lacuna na literatura
 
@@ -45,7 +45,7 @@ A maioria dos benchmarks de Text-to-SQL consolidados (Spider, BIRD) avalia as qu
 | Modelo            | Empresa   | Tipo          | Acesso                    |
 |-------------------|-----------|---------------|---------------------------|
 | Claude Sonnet 4.5 | Anthropic | Proprietário  | API Anthropic            
-| GPT-4.1           | OpenAI    | Proprietário  | API OpenAI               
+| GPT-5.2           | OpenAI    | Proprietário  | API OpenAI
 | Gemini 2.5 Pro    | Google    | Proprietário  | API Google AI            
 | Llama 3.3 70B     | Meta      | Open-source   | Groq / Ollama             
 | Qwen 2.5 72B      | Alibaba   | Open-source   | Groq / Ollama             
@@ -59,10 +59,9 @@ A maioria dos benchmarks de Text-to-SQL consolidados (Spider, BIRD) avalia as qu
 | SGBD       | Versão | Licença         | Destaque para o benchmark                                                  |
 |------------|--------|-----------------|---------------------------------------------------------------------------|
 | PostgreSQL | 17     | BSD             | SQL mais rico: CTEs, window functions, JSONB, `ILIKE`, `EXPLAIN ANALYZE` completo |
-| MySQL      | 8.0    | GPL             | SGBD relacional mais popular; diferenças em funções de data/string vs PostgreSQL |
 | MariaDB    | 11.x   | GPL             | Fork do MySQL com divergências em tipos, funções e otimizador             |
 | SQLite     | 3.x    | Domínio público | Sem servidor; `EXPLAIN QUERY PLAN` com saída diferente; tipagem flexível  |
 
-> **Nota sobre EXPLAIN:** PostgreSQL e MySQL/MariaDB expõem `EXPLAIN ANALYZE` com custo estimado e real. SQLite expõe apenas `EXPLAIN QUERY PLAN` com informação de acesso (índice ou varredura). A implementação trata cada SGBD de forma diferenciada na coleta de métricas de eficiência.
+> **Nota sobre EXPLAIN:** PostgreSQL e MariaDB expõem `EXPLAIN ANALYZE` com custo estimado e real. SQLite expõe apenas `EXPLAIN QUERY PLAN` com informação de acesso (índice ou varredura). A implementação trata cada SGBD de forma diferenciada na coleta de métricas de eficiência.
 
 ---

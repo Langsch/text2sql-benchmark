@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "text2sql-benchmark"
+version = "0.1.0"
+description = "Benchmark comparativo de LLMs na geração de SQL para múltiplos SGBDs"
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic>=0.40.0",
+    "openai>=1.30.0",
+    "google-generativeai>=0.8.0",
+    "groq>=0.11.0",
+    "psycopg2-binary>=2.9.0",
+    "PyMySQL>=1.1.0",
+    "typer>=0.13.0",
+    "pydantic>=2.0.0",
+    "sqlglot>=25.0.0",
+    "python-dotenv>=1.0.0",
+    "rich>=13.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.6.0",
+    "mypy>=1.10.0",
+]
+
+[project.scripts]
+text2sql = "cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/text2sql_benchmark"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
