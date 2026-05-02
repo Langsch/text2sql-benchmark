@@ -61,11 +61,16 @@ class BenchmarkRunner:
         self._prompt_builder = BirdPromptBuilder()
         self._store = ResultsStore(cfg.output_dir)
 
-    def run(self, limit: int | None = None, difficulty: str | None = None) -> Path:
+    def run(
+        self,
+        limit: int | None = None,
+        difficulty: str | None = None,
+        db_id: str | None = None,
+    ) -> Path:
         run_id = str(uuid.uuid4())[:8]
         instances = list(
             self._loader.load(self._cfg.bird_data_path)
-            and self._loader.iter_instances(difficulty=difficulty, limit=limit)
+            and self._loader.iter_instances(difficulty=difficulty, limit=limit, db_id=db_id)
         )
         llms = _build_llm_connectors(self._cfg)
         dbs = _build_db_connectors(self._cfg)

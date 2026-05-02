@@ -25,4 +25,5 @@ class DatasetLoader(ABC):
         self,
         difficulty: str | None = None,
         limit: int | None = None,
+        db_id: str | None = None,
     ) -> Iterator[BirdInstance]: ...

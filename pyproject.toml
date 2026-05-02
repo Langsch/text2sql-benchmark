@@ -27,6 +27,7 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "ruff>=0.6.0",
     "mypy>=1.10.0",
+    "datasets>=2.0.0",
 ]
 
 [project.scripts]

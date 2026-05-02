@@ -30,10 +30,13 @@ class BirdLoader(DatasetLoader):
         self,
         difficulty: str | None = None,
         limit: int | None = None,
+        db_id: str | None = None,
     ) -> Iterator[BirdInstance]:
         instances = self._instances
         if difficulty:
             instances = [i for i in instances if i.difficulty == difficulty]
+        if db_id:
+            instances = [i for i in instances if i.db_id == db_id]
         if limit:
             instances = instances[:limit]
         yield from instances

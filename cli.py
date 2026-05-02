@@ -18,6 +18,7 @@ def run(
     difficulty: Optional[str] = typer.Option(None, help="Filtrar por dificuldade: simple|moderate|challenging."),
     model: Optional[str] = typer.Option(None, help="Rodar apenas um modelo específico."),
     sgbd: Optional[str] = typer.Option(None, help="Rodar apenas um SGBD específico: postgresql|mariadb|sqlite."),
+    db: Optional[str] = typer.Option(None, help="Rodar apenas um banco: student_club|formula_1|thrombosis_prediction|..."),
 ) -> None:
     """Executa o benchmark completo (dataset × LLMs × SGBDs)."""
     from src.text2sql_benchmark.config import load_config
@@ -25,7 +26,7 @@ def run(
 
     cfg = load_config()
     runner = BenchmarkRunner(cfg)
-    runner.run(limit=limit, difficulty=difficulty)
+    runner.run(limit=limit, difficulty=difficulty, db_id=db)
 
 
 @app.command()
