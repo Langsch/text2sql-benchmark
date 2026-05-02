@@ -16,6 +16,11 @@ class SQLiteConnector(DBConnector):
     def _get_conn(self, db_id: str) -> sqlite3.Connection:
         if db_id not in self._connections:
             db_path = self._db_dir / db_id / f"{db_id}.sqlite"
+            if not db_path.exists():
+                raise FileNotFoundError(
+                    f"Banco SQLite não encontrado: {db_path}\n"
+                    f"Verifique se SQLITE_DB_DIR={self._db_dir} está correto no .env"
+                )
             self._connections[db_id] = sqlite3.connect(str(db_path))
         return self._connections[db_id]
 

@@ -44,7 +44,7 @@ def load_config() -> BenchmarkConfig:
             LLMConfig("gpt-5.2", os.getenv("OPENAI_API_KEY", "")),
             LLMConfig("gemini-2.5-pro", os.getenv("GOOGLE_API_KEY", "")),
             LLMConfig("llama-3.3-70b-versatile", os.getenv("GROQ_API_KEY", "")),
-            LLMConfig("qwen-2.5-72b-instruct", os.getenv("GROQ_API_KEY", "")),
+            LLMConfig("qwen/qwen3-32b", os.getenv("GROQ_API_KEY", "")),
         ],
         databases=[
             DBConfig("postgresql", os.getenv("POSTGRES_URL", "")),

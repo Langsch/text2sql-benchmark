@@ -26,7 +26,7 @@ def run(
 
     cfg = load_config()
     runner = BenchmarkRunner(cfg)
-    runner.run(limit=limit, difficulty=difficulty, db_id=db)
+    runner.run(limit=limit, difficulty=difficulty, db_id=db, sgbd=sgbd)
 
 
 @app.command()

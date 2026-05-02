@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import uuid
+from datetime import datetime
 from pathlib import Path
 
 from rich.console import Console
@@ -16,6 +16,14 @@ from ..prompt import BirdPromptBuilder
 from ..storage import BenchmarkResult, ResultsStore
 
 console = Console()
+
+
+def _build_run_id(sgbd: str | None, db_id: str | None, difficulty: str | None) -> str:
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    parts = [ts, sgbd or "sqlite", db_id or "all"]
+    if difficulty:
+        parts.append(difficulty)
+    return "_".join(parts)
 
 _EXPLAIN_PARSERS = {
     "postgresql": PostgreSQLExplainParser(),
@@ -40,9 +48,11 @@ def _build_llm_connectors(cfg: BenchmarkConfig) -> list[LLMConnector]:
     return connectors
 
 
-def _build_db_connectors(cfg: BenchmarkConfig) -> list[DBConnector]:
+def _build_db_connectors(cfg: BenchmarkConfig, sgbd: str | None = None) -> list[DBConnector]:
     connectors: list[DBConnector] = []
     for db_cfg in cfg.databases:
+        if sgbd and db_cfg.dialect != sgbd:
+            continue
         if not db_cfg.url:
             continue
         if db_cfg.dialect == "postgresql":
@@ -66,14 +76,16 @@ class BenchmarkRunner:
         limit: int | None = None,
         difficulty: str | None = None,
         db_id: str | None = None,
+        sgbd: str | None = None,
     ) -> Path:
-        run_id = str(uuid.uuid4())[:8]
+        run_id = _build_run_id(sgbd, db_id, difficulty)
+        dialect = sgbd or "sqlite"
         instances = list(
-            self._loader.load(self._cfg.bird_data_path)
+            self._loader.load(self._cfg.bird_data_path, dialect=dialect)
             and self._loader.iter_instances(difficulty=difficulty, limit=limit, db_id=db_id)
         )
         llms = _build_llm_connectors(self._cfg)
-        dbs = _build_db_connectors(self._cfg)
+        dbs = _build_db_connectors(self._cfg, sgbd=sgbd)
 
         console.print(f"[bold]Run {run_id}[/bold] — {len(instances)} instâncias × {len(llms)} LLMs × {len(dbs)} SGBDs")
 
@@ -84,7 +96,7 @@ class BenchmarkRunner:
                     instance, schema, db.dialect, self._cfg.use_evidence
                 )
                 for llm in llms:
-                    result = self._run_single(instance, llm, db, prompt)
+                    result = self._run_single(instance, llm, db, prompt, db_id=instance.db_id)
                     self._store.add(result)
 
         path = self._store.save(run_id)
@@ -97,6 +109,7 @@ class BenchmarkRunner:
         llm: LLMConnector,
         db: DBConnector,
         prompt: str,
+        db_id: str = "",
     ) -> BenchmarkResult:
         error: str | None = None
         sql_generated = ""
@@ -111,14 +124,14 @@ class BenchmarkRunner:
             sql_generated = llm_response.sql
 
             with measure_latency() as ms:
-                pred_rows = db.execute(sql_generated, timeout=self._cfg.timeout_seconds)
+                pred_rows = db.execute(sql_generated, timeout=self._cfg.timeout_seconds, db_id=db_id)
             latency_ms = ms[0]
 
-            gold_rows = db.execute(instance.sql_gold, timeout=self._cfg.timeout_seconds)
+            gold_rows = db.execute(instance.sql_gold, timeout=self._cfg.timeout_seconds, db_id=db_id)
             ex = execution_accuracy(pred_rows, gold_rows)
             em = exact_match(sql_generated, instance.sql_gold)
 
-            explain_raw = db.explain(sql_generated)
+            explain_raw = db.explain(sql_generated, db_id=db_id)
             parser = _EXPLAIN_PARSERS[db.dialect]
             parsed = parser.parse(explain_raw)
             explain_parsed = {
