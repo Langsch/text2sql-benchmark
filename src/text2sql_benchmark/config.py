@@ -35,7 +35,7 @@ class BenchmarkConfig:
 
 def load_config() -> BenchmarkConfig:
     return BenchmarkConfig(
-        bird_data_path=Path(os.environ["BIRD_DATA_PATH"]),
+        bird_data_path=Path(os.getenv("BIRD_DATA_PATH", "./data/bird/by_db")),
         use_evidence=os.getenv("BIRD_USE_EVIDENCE", "true").lower() == "true",
         timeout_seconds=int(os.getenv("BENCHMARK_TIMEOUT_SECONDS", "30")),
         output_dir=Path(os.getenv("BENCHMARK_OUTPUT_DIR", "./results/runs")),
