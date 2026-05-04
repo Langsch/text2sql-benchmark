@@ -1,15 +1,22 @@
 from __future__ import annotations
 
+import re
 import time
 
 from groq import Groq
 
 from .base import LLMConnector, LLMResponse
 
-GROQ_MODELS = {
-    "llama": "llama-3.3-70b-versatile",
-    "qwen": "qwen-2.5-72b-instruct",
-}
+_THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
+
+
+def _extract_sql(text: str) -> str:
+    text = _THINK_RE.sub("", text).strip()
+    # strip ```sql ... ``` fences if present
+    fence = re.search(r"```(?:sql)?\s*(.*?)```", text, re.DOTALL | re.IGNORECASE)
+    if fence:
+        return fence.group(1).strip()
+    return text
 
 
 class GroqConnector(LLMConnector):
@@ -22,13 +29,13 @@ class GroqConnector(LLMConnector):
         response = self._client.chat.completions.create(
             model=self.model_name,
             temperature=0.0,
-            max_tokens=1024,
+            max_tokens=4096,
             messages=[{"role": "user", "content": prompt}],
         )
         latency_ms = (time.perf_counter() - start) * 1000
-        sql = response.choices[0].message.content or ""
+        raw = response.choices[0].message.content or ""
         return LLMResponse(
-            sql=sql.strip(),
+            sql=_extract_sql(raw),
             model=self.model_name,
             input_tokens=response.usage.prompt_tokens if response.usage else 0,
             output_tokens=response.usage.completion_tokens if response.usage else 0,
