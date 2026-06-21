@@ -40,5 +40,33 @@ def report(
     gen.summary_table()
 
 
+@app.command()
+def index(
+    limit: Optional[int] = typer.Option(None, help="Limitar número de instâncias por banco."),
+    difficulty: Optional[str] = typer.Option(None, help="Filtrar por dificuldade: simple|moderate|challenging."),
+    model: Optional[str] = typer.Option(None, help="Rodar apenas um modelo específico."),
+    db: Optional[str] = typer.Option(None, help="Rodar apenas um banco: student_club|formula_1|..."),
+) -> None:
+    """Executa o benchmark de sugestão de índices (SQLite only)."""
+    from src.text2sql_benchmark.config import load_config
+    from src.text2sql_benchmark.runner.index_runner import IndexBenchmarkRunner
+
+    cfg = load_config()
+    runner = IndexBenchmarkRunner(cfg)
+    runner.run(limit=limit, difficulty=difficulty, db_id=db, model=model)
+
+
+@app.command()
+def index_report(
+    results_file: Path = typer.Argument(..., help="Caminho para o arquivo JSON de resultados de índices."),
+) -> None:
+    """Exibe relatório resumido de benchmark de índices."""
+    from src.text2sql_benchmark.report.index_report import IndexReportGenerator
+
+    gen = IndexReportGenerator.from_file(results_file)
+    gen.summary_table()
+    gen.model_summary_table()
+
+
 if __name__ == "__main__":
     app()
