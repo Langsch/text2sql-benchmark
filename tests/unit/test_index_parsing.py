@@ -86,3 +86,27 @@ def test_composite_index():
     result = parse_index_statements(raw)
     assert len(result) == 1
     assert "first_name, last_name, zip" in result[0]
+
+
+# --- Regressao: prefixo de coluna do MariaDB ---
+# Indice em coluna TEXT no MariaDB exige prefixo: `ON atom(element(10))`. A
+# regex antiga usava `[^)]+`, que parava no parentese interno e truncava o
+# statement — o CREATE INDEX chegava ao banco sem fechar, dava erro 1064, e o
+# defeito parecia culpa do modelo.
+
+def test_prefixo_de_coluna_simples():
+    from src.text2sql_benchmark.runner.index_runner import parse_index_statements
+    saida = parse_index_statements("CREATE INDEX idx_a ON atom(element(10));")
+    assert saida == ["CREATE INDEX idx_a ON atom(element(10));"]
+
+
+def test_prefixo_em_indice_composto():
+    from src.text2sql_benchmark.runner.index_runner import parse_index_statements
+    bruto = "CREATE INDEX idx_b ON atom(molecule_id, element(10));"
+    assert parse_index_statements(bruto) == [bruto]
+
+
+def test_identificadores_com_crase():
+    from src.text2sql_benchmark.runner.index_runner import parse_index_statements
+    bruto = "CREATE INDEX `idx_d` ON `t`(c(5), d);"
+    assert parse_index_statements(bruto) == [bruto]

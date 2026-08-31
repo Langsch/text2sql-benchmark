@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import shutil
 import statistics
+import time
 from collections import defaultdict
 from dataclasses import asdict
 from datetime import datetime
@@ -13,10 +14,19 @@ from rich.progress import track
 
 from ..config import BenchmarkConfig
 from ..dataset import BirdLoader, BirdInstance
-from ..db import SQLiteConnector
+from ..db import DBConnector, MariaDBConnector, PostgreSQLConnector, SQLiteConnector
+from ..db.isolation import (
+    EstrategiaIsolamento,
+    IsolamentoPorCopia,
+    IsolamentoPorTransacao,
+)
 from ..llm import LLMConnector, AnthropicConnector, OpenAIConnector, GoogleConnector, GroqConnector
 from ..metrics import measure_latency
-from ..metrics.explain_parsers import SQLiteExplainParser
+from ..metrics.explain_parsers import (
+    MariaDBExplainParser,
+    PostgreSQLExplainParser,
+    SQLiteExplainParser,
+)
 from ..prompt.index_prompt import IndexPromptBuilder
 from ..storage.index_results_store import (
     IndexApplication,
@@ -30,12 +40,27 @@ console = Console()
 
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
 _FENCE_RE = re.compile(r"```(?:sql)?\s*(.*?)```", re.DOTALL | re.IGNORECASE)
+# A lista de colunas pode conter parenteses aninhados: no MariaDB, indice em
+# coluna TEXT exige prefixo — `ON atom(element(10))`. Um `[^)]+` pararia no
+# primeiro `)` e truncaria o statement, gerando erro de sintaxe que parece
+# culpa do modelo. `(?:[^()]|\([^()]*\))+` casa um nivel de aninhamento.
 _CREATE_INDEX_RE = re.compile(
-    r"CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?\w+\s+ON\s+\w+\s*\([^)]+\)\s*;?",
+    r"CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?"
+    r"[`\"']?\w+[`\"']?\s+ON\s+[`\"']?\w+[`\"']?\s*"
+    r"\((?:[^()]|\([^()]*\))+\)\s*;?",
     re.IGNORECASE,
 )
 
-_explain_parser = SQLiteExplainParser()
+_EXPLAIN_PARSERS = {
+    "sqlite": SQLiteExplainParser(),
+    "postgresql": PostgreSQLExplainParser(),
+    "mariadb": MariaDBExplainParser(),
+}
+
+# Pausa antes de cada chamada a Groq. Os limites do plano gratuito sao por
+# minuto e uma rodada completa dispara 11 chamadas seguidas, o que estoura a
+# janela sem esperar. O connector ainda tem retry proprio.
+_THROTTLE_SECONDS = 20.0
 
 
 def _build_run_id(db_id: str | None, difficulty: str | None) -> str:
@@ -52,11 +77,11 @@ def _build_llm_connectors(cfg: BenchmarkConfig) -> list[LLMConnector]:
         if not llm_cfg.api_key:
             continue
         if "claude" in llm_cfg.model_name:
-            connectors.append(AnthropicConnector(llm_cfg.api_key))
+            connectors.append(AnthropicConnector(llm_cfg.model_name, llm_cfg.api_key))
         elif "gpt" in llm_cfg.model_name:
-            connectors.append(OpenAIConnector(llm_cfg.api_key))
+            connectors.append(OpenAIConnector(llm_cfg.model_name, llm_cfg.api_key))
         elif "gemini" in llm_cfg.model_name:
-            connectors.append(GoogleConnector(llm_cfg.api_key))
+            connectors.append(GoogleConnector(llm_cfg.model_name, llm_cfg.api_key))
         else:
             connectors.append(GroqConnector(llm_cfg.model_name, llm_cfg.api_key))
     return connectors
@@ -73,20 +98,46 @@ def parse_index_statements(raw: str) -> list[str]:
     return [s.rstrip(";").strip() + ";" for s in statements]
 
 
-def _get_sqlite_db_dir(cfg: BenchmarkConfig) -> str:
+def _url_do_dialeto(cfg: BenchmarkConfig, dialect: str) -> str:
     for db_cfg in cfg.databases:
-        if db_cfg.dialect == "sqlite":
+        if db_cfg.dialect == dialect and db_cfg.url:
             return db_cfg.url
-    raise ValueError("No SQLite database configured in .env (SQLITE_DB_DIR)")
+    raise ValueError(f"Nenhum banco {dialect!r} configurado no .env")
+
+
+def _abrir_conector(cfg: BenchmarkConfig, dialect: str) -> DBConnector:
+    url = _url_do_dialeto(cfg, dialect)
+    if dialect == "sqlite":
+        return SQLiteConnector(url)
+    sqlite_dir = next(
+        (d.url for d in cfg.databases if d.dialect == "sqlite"), ""
+    )
+    if dialect == "postgresql":
+        return PostgreSQLConnector(url, sqlite_dir)
+    if dialect == "mariadb":
+        return MariaDBConnector(url, sqlite_dir)
+    raise ValueError(f"Dialeto sem suporte: {dialect!r}")
 
 
 class IndexBenchmarkRunner:
-    def __init__(self, cfg: BenchmarkConfig) -> None:
+    def __init__(self, cfg: BenchmarkConfig, dialect: str = "sqlite") -> None:
         self._cfg = cfg
         self._loader = BirdLoader()
         self._prompt_builder = IndexPromptBuilder()
         self._store = IndexResultsStore(cfg.output_dir / "index_runs")
-        self._db_dir = Path(_get_sqlite_db_dir(cfg))
+        self._dialect = dialect
+        self._explain_parser = _EXPLAIN_PARSERS[dialect]
+
+    def _nova_estrategia(self, conector: DBConnector) -> EstrategiaIsolamento:
+        """SQLite isola por copia de arquivo; os servidores, por transacao."""
+        base = self._cfg.output_dir / "index_runs"
+        if self._dialect == "sqlite":
+            return IsolamentoPorCopia(
+                Path(_url_do_dialeto(self._cfg, "sqlite")), base / "tmp_dbs"
+            )
+        return IsolamentoPorTransacao(
+            conector, base / f"indices_pendentes_{self._dialect}.json"
+        )
 
     def run(
         self,
@@ -96,6 +147,7 @@ class IndexBenchmarkRunner:
         model: str | None = None,
     ) -> Path:
         run_id = _build_run_id(db_id, difficulty)
+        self._store.begin(run_id)
 
         # Load BIRD instances (SQLite only)
         self._loader.load(self._cfg.bird_data_path, dialect="sqlite")
@@ -119,7 +171,7 @@ class IndexBenchmarkRunner:
             f"{len(instances)} total queries"
         )
 
-        original_db = SQLiteConnector(str(self._db_dir))
+        original_db = _abrir_conector(self._cfg, self._dialect)
 
         combo_items = [
             (current_db_id, llm)
@@ -127,7 +179,13 @@ class IndexBenchmarkRunner:
             for llm in llms
         ]
 
-        for current_db_id, llm in track(combo_items, description="Index benchmark..."):
+        for position, (current_db_id, llm) in enumerate(
+            track(combo_items, description="Index benchmark...")
+        ):
+            # A pausa existe so por causa do teto por minuto do plano gratuito
+            # da Groq. Os demais provedores nao precisam esperar.
+            if position and isinstance(llm, GroqConnector):
+                time.sleep(_THROTTLE_SECONDS)
             db_instances = by_db[current_db_id]
             result = self._run_single(current_db_id, db_instances, llm, original_db)
             self._store.add(result)
@@ -142,14 +200,16 @@ class IndexBenchmarkRunner:
         db_id: str,
         instances: list[BirdInstance],
         llm: LLMConnector,
-        original_db: SQLiteConnector,
+        original_db: DBConnector,
     ) -> IndexBenchmarkResult:
         console.print(f"  [cyan]{db_id}[/cyan] × [yellow]{llm.model_name}[/yellow]")
 
         # --- Step 1: Build prompt and call LLM ---
         schema = original_db.get_schema(db_id)
         gold_queries = [inst.sql_gold for inst in instances]
-        prompt = self._prompt_builder.build(schema, gold_queries, db_id)
+        prompt = self._prompt_builder.build(
+            schema, gold_queries, db_id, dialect=self._dialect
+        )
 
         try:
             llm_response = llm.generate(prompt)
@@ -162,37 +222,60 @@ class IndexBenchmarkRunner:
                 index_output_tokens=0,
                 index_llm_latency_ms=0.0,
                 raw_llm_response="",
+                index_prompt=prompt,
+                dialect=self._dialect,
                 error=str(exc),
             )
 
         raw_response = llm_response.sql
         index_statements = parse_index_statements(raw_response)
         console.print(f"    Indexes suggested: {len(index_statements)}")
+        if llm_response.truncated:
+            console.print(
+                "    [red]ATENCAO: resposta truncada em max_tokens — a lista de "
+                "indices esta incompleta.[/red]"
+            )
 
-        # --- Step 2: Copy database and apply indexes ---
-        copy_path = self._copy_database(db_id, llm.model_name)
-        applications = self._apply_indexes(copy_path, index_statements)
+        # --- Step 2: Baseline ANTES de qualquer indice ---
+        # A ordem importa: no isolamento por transacao (PostgreSQL, MariaDB) os
+        # indices sao criados no proprio banco, entao medir o "antes" depois de
+        # aplica-los daria um baseline ja indexado. Coletar primeiro vale para
+        # as duas estrategias.
+        timeout = self._cfg.timeout_seconds
+        antes = [
+            self._measure_query(original_db, inst.sql_gold, db_id, timeout)
+            for inst in instances
+        ]
 
-        applied = sum(1 for a in applications if a.success)
-        failed = sum(1 for a in applications if not a.success)
+        # --- Step 3: Aplicar os indices conforme a estrategia do dialeto ---
+        estrategia = self._nova_estrategia(original_db)
+        indexed_db, aplicacoes = estrategia.preparar(db_id, index_statements)
+        applications = aplicacoes
+
+        applied = sum(1 for a in aplicacoes if a.success)
+        failed = sum(1 for a in aplicacoes if not a.success)
         console.print(f"    Applied: {applied}, Failed: {failed}")
 
-        # --- Step 3: Benchmark queries before and after ---
-        indexed_db_dir = copy_path.parent.parent  # .../tmp_dbs/{db_id}/{db}.sqlite → .../tmp_dbs/
-        indexed_db = SQLiteConnector(str(indexed_db_dir))
-
+        # --- Step 4: Medir de novo, agora com os indices ---
         query_results: list[QueryResult] = []
-        for inst in instances:
-            qr = self._benchmark_query(inst, original_db, indexed_db, db_id)
-            query_results.append(qr)
-
-        indexed_db.close()
-
-        # Clean up the copy
         try:
-            copy_path.unlink()
-        except OSError:
-            pass
+            for inst, medida_antes in zip(instances, antes):
+                depois = self._measure_query(
+                    indexed_db, inst.sql_gold, db_id, timeout
+                )
+                query_results.append(
+                    QueryResult(
+                        instance_id=inst.instance_id,
+                        sql=inst.sql_gold,
+                        difficulty=inst.difficulty,
+                        before=medida_antes,
+                        after=depois,
+                        improved=depois.latency_ms < medida_antes.latency_ms,
+                        new_index_used=depois.uses_index and not medida_antes.uses_index,
+                    )
+                )
+        finally:
+            estrategia.limpar(db_id)
 
         # --- Step 4: Compute aggregate stats ---
         total = len(query_results)
@@ -212,6 +295,9 @@ class IndexBenchmarkRunner:
             index_output_tokens=llm_response.output_tokens,
             index_llm_latency_ms=llm_response.latency_ms,
             raw_llm_response=raw_response,
+            index_prompt=prompt,
+            dialect=self._dialect,
+            truncated=llm_response.truncated,
             indexes_suggested=[asdict(a) for a in applications],
             indexes_applied=applied,
             indexes_failed=failed,
@@ -224,72 +310,13 @@ class IndexBenchmarkRunner:
             speedup_ratio=speedup,
         )
 
-    def _copy_database(self, db_id: str, model_name: str) -> Path:
-        """Copy the original .sqlite to a temporary location for indexing."""
-        original = self._db_dir / db_id / f"{db_id}.sqlite"
-        tmp_dir = self._cfg.output_dir / "index_runs" / "tmp_dbs" / db_id
-        tmp_dir.mkdir(parents=True, exist_ok=True)
-        copy_path = tmp_dir / f"{db_id}.sqlite"
-        shutil.copy2(str(original), str(copy_path))
-        return copy_path
-
-    def _apply_indexes(
-        self, db_path: Path, statements: list[str]
-    ) -> list[IndexApplication]:
-        """Apply CREATE INDEX statements on the copied database."""
-        import sqlite3
-
-        results: list[IndexApplication] = []
-        conn = sqlite3.connect(str(db_path))
-        try:
-            for stmt in statements:
-                try:
-                    conn.execute(stmt)
-                    conn.commit()
-                    results.append(IndexApplication(statement=stmt, success=True))
-                except Exception as exc:
-                    results.append(
-                        IndexApplication(statement=stmt, success=False, error=str(exc))
-                    )
-        finally:
-            conn.close()
-        return results
-
-    def _benchmark_query(
-        self,
-        instance: BirdInstance,
-        original_db: SQLiteConnector,
-        indexed_db: SQLiteConnector,
-        db_id: str,
-        runs: int = 3,
-    ) -> QueryResult:
-        """Run a gold query on both original and indexed DBs, collecting performance data."""
-        sql = instance.sql_gold
-        timeout = self._cfg.timeout_seconds
-
-        before = self._measure_query(original_db, sql, db_id, timeout, runs)
-        after = self._measure_query(indexed_db, sql, db_id, timeout, runs)
-
-        improved = after.latency_ms < before.latency_ms
-        new_index_used = after.uses_index and not before.uses_index
-
-        return QueryResult(
-            instance_id=instance.instance_id,
-            sql=sql,
-            difficulty=instance.difficulty,
-            before=before,
-            after=after,
-            improved=improved,
-            new_index_used=new_index_used,
-        )
-
     def _measure_query(
         self,
-        db: SQLiteConnector,
+        db: DBConnector,
         sql: str,
         db_id: str,
         timeout: int,
-        runs: int,
+        runs: int = 3,
     ) -> QueryPerformance:
         """Execute a query multiple times and collect latency + EXPLAIN data."""
         latencies: list[float] = []
@@ -309,7 +336,7 @@ class IndexBenchmarkRunner:
 
             # EXPLAIN
             explain_raw = db.explain(sql, db_id=db_id)
-            parsed = _explain_parser.parse(explain_raw)
+            parsed = self._explain_parser.parse(explain_raw)
             uses_index = parsed.uses_index
             scan_type = parsed.scan_type
         except Exception as exc:
