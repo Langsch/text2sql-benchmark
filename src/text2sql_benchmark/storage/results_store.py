@@ -19,7 +19,19 @@ class BenchmarkResult:
     latency_ms: float
     explain_raw: str
     explain_parsed: dict
+    # Prompt exato enviado ao modelo — necessario para reproduzir a rodada.
+    prompt: str = ""
     error: str | None = None
+    # Classifica a falha. Sem isso um timeout (query valida porem lenta), um
+    # SQL invalido e uma queda de API viram todos "erro", e a analise nao
+    # consegue separar limitacao do modelo de problema de infraestrutura.
+    #   timeout      -> query valida, excedeu o limite (resultado de performance)
+    #   sql_error    -> SQL invalido (falha de corretude do modelo)
+    #   llm_error    -> a API do modelo falhou (refazer, nao e resultado)
+    #   system_error -> infraestrutura (nao e resultado)
+    error_type: str | None = None
+    # Quanto a query rodou antes de ser abortada, quando error_type=timeout.
+    timed_out_after_ms: float = 0.0
 
 
 class ResultsStore:
@@ -27,19 +39,45 @@ class ResultsStore:
         self._output_dir = output_dir
         self._output_dir.mkdir(parents=True, exist_ok=True)
         self._results: list[BenchmarkResult] = []
+        self._run_id: str | None = None
+
+    def begin(self, run_id: str) -> None:
+        """Liga a persistencia incremental: cada add() passa a gravar o arquivo.
+
+        Sem isso os resultados ficam so em memoria ate o fim da rodada, e uma
+        queda na ultima combinacao perde a rodada inteira.
+        """
+        self._run_id = run_id
 
     def add(self, result: BenchmarkResult) -> None:
         self._results.append(result)
+        if self._run_id:
+            self.save(self._run_id)
 
     def save(self, run_id: str) -> Path:
         path = self._output_dir / f"{run_id}.json"
-        path.write_text(
-            json.dumps([asdict(r) for r in self._results], indent=2, ensure_ascii=False),
-            encoding="utf-8",
+        payload = json.dumps(
+            [asdict(r) for r in self._results], indent=2, ensure_ascii=False
         )
+        # Grava num temporario e renomeia: rename e atomico no mesmo filesystem,
+        # entao uma queda no meio da escrita nao deixa JSON truncado no lugar.
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(payload, encoding="utf-8")
+        tmp.replace(path)
         return path
 
     def load(self, path: Path) -> list[BenchmarkResult]:
         data = json.loads(path.read_text(encoding="utf-8"))
         self._results = [BenchmarkResult(**d) for d in data]
         return self._results
+
+    def descartar(self, error_type: str) -> int:
+        """Remove resultados de um tipo de erro. Devolve quantos saíram.
+
+        Usado na retomada: um `llm_error` e chamada que nao aconteceu, entao
+        o registro precisa sair antes de a questao ser refeita — senao o
+        arquivo final teria a falha antiga e o resultado novo lado a lado.
+        """
+        antes = len(self._results)
+        self._results = [r for r in self._results if r.error_type != error_type]
+        return antes - len(self._results)
