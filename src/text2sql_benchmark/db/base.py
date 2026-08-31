@@ -7,10 +7,17 @@ class DBConnector(ABC):
     dialect: str  # "postgresql" | "mariadb" | "sqlite"
 
     @abstractmethod
-    def execute(self, sql: str, timeout: int = 30) -> list[tuple]: ...
+    def execute(self, sql: str, timeout: int = 30, db_id: str = "") -> list[tuple]:
+        """Executa `sql` no banco `db_id`, respeitando o tempo limite.
+
+        O BIRD tem 11 bancos e o benchmark alterna entre eles, por isso todo
+        metodo recebe `db_id`. No SQLite ele seleciona o arquivo; no
+        PostgreSQL, o schema; no MariaDB, o database.
+        """
+        ...
 
     @abstractmethod
-    def explain(self, sql: str) -> str:
+    def explain(self, sql: str, db_id: str = "") -> str:
         """Retorna a saída bruta do EXPLAIN (ANALYZE) específica de cada SGBD."""
         ...
 

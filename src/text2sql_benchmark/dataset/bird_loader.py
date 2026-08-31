@@ -11,11 +11,17 @@ class BirdLoader(DatasetLoader):
     def __init__(self) -> None:
         self._instances: list[BirdInstance] = []
 
+    # O BIRD distribui as queries como "mysql"; o projeto usa MariaDB, que le
+    # o mesmo arquivo. Sem este mapa a busca por "mariadb.json" nao acha nada e
+    # o benchmark roda com zero instancias, em silencio.
+    _ARQUIVO_POR_DIALETO = {"mariadb": "mysql"}
+
     def load(self, path: Path, dialect: str = "sqlite") -> list[BirdInstance]:
         if path.is_dir():
             # carrega <path>/<db_id>/<dialect>.json para cada banco
             raw: list[dict] = []
-            for json_file in sorted(path.glob(f"*/{dialect}.json")):
+            arquivo = self._ARQUIVO_POR_DIALETO.get(dialect, dialect)
+            for json_file in sorted(path.glob(f"*/{arquivo}.json")):
                 raw.extend(json.loads(json_file.read_text(encoding="utf-8")))
         else:
             raw = json.loads(path.read_text(encoding="utf-8"))
