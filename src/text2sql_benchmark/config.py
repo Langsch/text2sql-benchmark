@@ -40,11 +40,13 @@ def load_config() -> BenchmarkConfig:
         timeout_seconds=int(os.getenv("BENCHMARK_TIMEOUT_SECONDS", "30")),
         output_dir=Path(os.getenv("BENCHMARK_OUTPUT_DIR", "./results/runs")),
         llms=[
-            LLMConfig("claude-sonnet-4-5", os.getenv("ANTHROPIC_API_KEY", "")),
+            LLMConfig("claude-sonnet-5", os.getenv("ANTHROPIC_API_KEY", "")),
+            # TODO: confirmar os IDs atuais de OpenAI e Google ao adicionar as chaves.
+            # Os modelos da Groq usados ate 06/2026 foram descontinuados sem aviso e
+            # passaram a retornar 404 — verificar antes de rodar o benchmark pago.
             LLMConfig("gpt-5.2", os.getenv("OPENAI_API_KEY", "")),
             LLMConfig("gemini-2.5-pro", os.getenv("GOOGLE_API_KEY", "")),
-            LLMConfig("llama-3.3-70b-versatile", os.getenv("GROQ_API_KEY", "")),
-            LLMConfig("qwen/qwen3-32b", os.getenv("GROQ_API_KEY", "")),
+            LLMConfig("qwen/qwen3.8-27b", os.getenv("GROQ_API_KEY", "")),
         ],
         databases=[
             DBConfig("postgresql", os.getenv("POSTGRES_URL", "")),

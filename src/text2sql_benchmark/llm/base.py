@@ -11,6 +11,10 @@ class LLMResponse:
     input_tokens: int
     output_tokens: int
     latency_ms: float
+    # True quando o provedor cortou a resposta por atingir max_tokens. Sem isso
+    # o corte passa despercebido: o parser descarta o statement incompleto e o
+    # resultado parece integro.
+    truncated: bool = False
 
 
 class LLMConnector(ABC):
