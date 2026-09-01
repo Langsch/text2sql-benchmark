@@ -370,7 +370,11 @@ limitação declarada e passa a ser diferença medida e descartada.
 ```bash
 docker compose up -d
 python cli.py pipeline --model <slug> --sgbd sqlite|postgresql|mariadb
-python cli.py compare --stage1 <json> --stage1 <json> ... --csv-dir results/csv/comparativo
+# comparação entre modelos: Etapa 1, e com --stage2/--stage3 também os índices
+python cli.py compare \
+  --stage1 <e1.json> --stage1 <e1.json> ... \
+  --stage2 <e2.json> --stage3 <e3.json> ... \
+  --csv-dir results/csv/comparativo
 python scripts/progresso.py -w
 ```
 
@@ -386,7 +390,8 @@ suficiente para reproduzir ou reauditar qualquer número deste documento sem
 nova chamada de API.
 
 Os CSVs estão em `results/csv/<sgbd>/` por modelo e em
-`results/csv/comparativo/` para a visão entre modelos.
+`results/csv/comparativo/` para a visão entre modelos —
+`acuracia_por_modelo.csv`, `divergencias.csv` e `indices_por_modelo.csv`.
 
 ---
 
@@ -396,7 +401,5 @@ Os CSVs estão em `results/csv/<sgbd>/` por modelo e em
   com o orientador. Sem ele, diferenças entre modelos são descritivas: os três
   do meio (Qwen 49,1 %, Luna 48,7 %, DeepSeek 46,9 %) devem ser tratados como
   um grupo, sem afirmar ordem entre eles.
-- **Comparação entre modelos nas Etapas 2 e 3.** O comando `compare` cobre a
-  Etapa 1; o efeito dos índices ainda é comparado manualmente.
 - **`README.md` e `docs/arquitetura.md`** descrevem o lineup planejado, não o
   executado.

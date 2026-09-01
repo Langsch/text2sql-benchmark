@@ -330,16 +330,27 @@ def providers(
 @app.command()
 def compare(
     stage1: list[Path] = typer.Option(..., "--stage1", help="JSONs de Etapa 1. Repita a opção para cada modelo/SGBD."),
+    stage2: list[Path] = typer.Option([], "--stage2", help="JSONs de Etapa 2. Repita na mesma ordem dos --stage3."),
+    stage3: list[Path] = typer.Option([], "--stage3", help="JSONs de Etapa 3, pareados por posição com os --stage2."),
     csv_dir: Optional[Path] = typer.Option(None, help="Diretório para exportar os CSVs."),
 ) -> None:
     """Compara modelos entre si sobre as mesmas questões.
 
     O relatório consolidado descreve um modelo por vez; este põe todos lado a
     lado e mostra onde discordam, que é a pergunta central do trabalho.
+
+    Com --stage2 e --stage3 sai também o efeito dos índices por modelo e a
+    verificação de em quantas células as queries incorretas ganham mais que as
+    corretas.
     """
     from src.text2sql_benchmark.report.comparative_report import ComparativeReport
 
-    rep = ComparativeReport.from_files(list(stage1))
+    if stage3 and len(stage3) != len(stage2):
+        raise typer.BadParameter(
+            f"--stage2 e --stage3 são pareados por posição: "
+            f"{len(stage2)} e {len(stage3)} recebidos."
+        )
+    rep = ComparativeReport.from_files(list(stage1), list(stage2), list(stage3))
     rep.imprimir()
 
     if csv_dir:
