@@ -84,6 +84,11 @@ que é resultado de eficiência.
 coerente com a natureza dos motores: o SQLite não tem otimizador baseado em
 custo nem paralelismo.
 
+**Totais da Etapa 1 nas 15 células:** 405 erros de execução, sendo 392
+`sql_error` e 13 `timeout`. As falhas de índice das Etapas 2 e 3 (233) são
+contadas à parte, em §3.1 — somá-las a estas misturaria falha de consulta com
+falha de DDL.
+
 Nas 7.500 medições não há **nenhum** `llm_error` nem `system_error`.
 
 ### 2.4 Por dificuldade
@@ -246,9 +251,13 @@ Consultas com ao menos uma construção inválida para o alvo:
 | DeepSeek V4 Flash | 3 | 4 | 9 | 16 |
 | **Total** | **11** | **31** | **38** | **80** |
 
-**As 80 consultas contaminadas falharam — taxa de falha de 100 %.** A
-construção de dialeto errado é sempre fatal, nunca degrada silenciosamente para
-um resultado incorreto. Elas respondem por 13 % dos 613 erros da matriz.
+**As 80 consultas contaminadas falharam — taxa de falha de 100 %, todas como
+`sql_error`.** A construção de dialeto errado é sempre fatal: nunca degrada
+silenciosamente para um resultado incorreto, o que a torna detectável.
+
+Elas respondem por **19,8 % dos 405 erros de execução** da Etapa 1, ou
+**20,4 % dos 392 `sql_error`** — um em cada cinco SQLs inválidos da matriz vem
+de dialeto trocado.
 
 A contaminação é mínima no SQLite (11 casos) e cresce nos servidores (31 e 38),
 o que é esperado: o SQLite é o dialeto de origem do dataset.
