@@ -19,14 +19,34 @@ import time
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
+
+for _linha in (RAIZ / ".env").read_text(encoding="utf-8").splitlines():
+    if _linha.startswith("OPENROUTER_API_KEY="):
+        os.environ.setdefault("OPENROUTER_API_KEY", _linha.split("=", 1)[1].strip())
 RUNS = RAIZ / "results" / "runs"
 
-# Sonnet 5, USD por token.
-PRECO_IN, PRECO_OUT = 2.00 / 1e6, 10.00 / 1e6
-# Input medio por questao da Etapa 1, medido com a contagem de tokens da API.
-IN_POR_QUESTAO, OUT_POR_QUESTAO = 853_810 / 500, 84
+def _saldo_openrouter() -> tuple[float, float] | None:
+    """Gasto e credito reais, direto da API do OpenRouter.
 
-CREDITO_INICIAL = 5.00
+    Substitui a estimativa por preco fixo que existia aqui: ela assumia o preco
+    do Sonnet para qualquer modelo e mostrava ~$0,95 numa rodada do DeepSeek que
+    custou centavos.
+    """
+    chave = os.getenv("OPENROUTER_API_KEY", "").strip()
+    if not chave:
+        return None
+    try:
+        import urllib.request
+
+        req = urllib.request.Request(
+            "https://openrouter.ai/api/v1/credits",
+            headers={"Authorization": f"Bearer {chave}"},
+        )
+        with urllib.request.urlopen(req, timeout=10) as r:
+            d = json.load(r)["data"]
+        return float(d["total_usage"]), float(d["total_credits"])
+    except Exception:
+        return None
 
 
 def _processo_ativo() -> str | None:
@@ -63,12 +83,24 @@ def _carregar(p: Path | None) -> list[dict]:
         return []  # gravacao em andamento
 
 
+def _sgbd(dados: list) -> str:
+    """SGBD de um arquivo de rodada.
+
+    A Etapa 1 guarda em `sgbd`; as Etapas 2 e 3, em `dialect`. Sem mostrar isso
+    a tela engana: cada etapa exibe o arquivo mais recente dela, entao durante
+    a troca de celula a Etapa 1 ja e do SGBD novo enquanto as Etapas 2 e 3
+    ainda sao do anterior, e parece que a rodada voltou ao inicio.
+    """
+    if not dados:
+        return "?"
+    d = dados[0]
+    return d.get("sgbd") or d.get("dialect") or "?"
+
+
 def relatorio() -> None:
     ativo = _processo_ativo()
     print(f"\n  {'▶ ' + ativo if ativo else '■ nada rodando'}")
     print("  " + "─" * 58)
-
-    gasto = 0.0
 
     # --- Etapa 1 ---
     p1 = _mais_recente("*_all.json")
@@ -81,24 +113,18 @@ def relatorio() -> None:
             r.get("error_type") or "sem_tipo" for r in d1 if r.get("error")
         )
         barra = "█" * int(n / 500 * 28) + "░" * (28 - int(n / 500 * 28))
-        print(f"  Etapa 1  {barra} {n}/500")
+        print(f"  Etapa 1  {barra} {n}/500   [{_sgbd(d1)}]")
         print(f"           EX {ok / n * 100:.1f}%   EM {em / n * 100:.1f}%", end="")
         print(f"   erros: {dict(tipos) if tipos else 0}")
         print(f"           {p1.name}")
-        gasto += n * IN_POR_QUESTAO * PRECO_IN + n * OUT_POR_QUESTAO * PRECO_OUT
 
     # --- Etapa 2 ---
     p2 = _mais_recente("index_runs/*_index_all.json")
     d2 = _carregar(p2)
     if d2:
         idx = sum(r.get("indexes_applied", 0) for r in d2)
-        print(f"\n  Etapa 2  {len(d2)}/11 bancos   {idx} índices aplicados")
+        print(f"\n  Etapa 2  {len(d2)}/11 bancos   {idx} índices aplicados   [{_sgbd(d2)}]")
         print(f"           {p2.name}")
-        gasto += sum(
-            r.get("index_prompt_tokens", 0) * PRECO_IN
-            + r.get("index_output_tokens", 0) * PRECO_OUT
-            for r in d2
-        )
 
     # --- Etapa 3 ---
     p3 = _mais_recente("revalidation_runs/*_revalidation_*.json")
@@ -107,13 +133,18 @@ def relatorio() -> None:
         medidas = sum(r.get("queries_measured", 0) for r in d3)
         melhor = sum(r.get("queries_improved", 0) for r in d3)
         print(f"\n  Etapa 3  {len(d3)} bancos   {medidas} queries medidas", end="")
-        print(f"   {melhor} melhoraram")
+        print(f"   {melhor} melhoraram   [{_sgbd(d3)}]")
         print(f"           {p3.name}")
     else:
         print("\n  Etapa 3  não executada")
 
     print("  " + "─" * 58)
-    print(f"  gasto ~${gasto:.2f}   crédito ~${CREDITO_INICIAL - gasto:.2f}\n")
+    saldo = _saldo_openrouter()
+    if saldo:
+        gasto, total = saldo
+        print(f"  OpenRouter: gasto ${gasto:.3f}   resta ${total - gasto:.2f} de ${total:.2f}\n")
+    else:
+        print("  (sem OPENROUTER_API_KEY no ambiente — saldo indisponível)\n")
 
 
 def main() -> int:
