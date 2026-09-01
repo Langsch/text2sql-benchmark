@@ -209,14 +209,32 @@ class LLMResponse:
     latency_ms: float   # latência de inferência do LLM (não da query SQL)
 ```
 
-| Conector | Modelo | API |
+| Conector | Uso | API |
 |---|---|---|
-| `AnthropicConnector` | Claude Sonnet 4.5 | `anthropic` SDK |
-| `OpenAIConnector` | GPT-5.2 | `openai` SDK |
-| `GoogleConnector` | Gemini 2.5 Pro | `google.genai` SDK |
-| `GroqConnector` | Llama 3.3 70B / Qwen 2.5 72B | `groq` SDK |
+| `AnthropicConnector` | Claude Sonnet 5 — rodada nativa de 30/08/2026 | `anthropic` SDK |
+| `OpenRouterConnector` | **todos os demais modelos** | `openai` SDK contra `openrouter.ai/api/v1` |
+| `OpenAIConnector` | acesso nativo, sem uso no lineup atual | `openai` SDK |
+| `GoogleConnector` | acesso nativo, sem uso no lineup atual | `google.genai` SDK |
+| `GroqConnector` | acesso nativo, sem uso no lineup atual | `groq` SDK |
 
-Todos os modelos usam `temperature=0.0` para garantir determinismo nas respostas e reprodutibilidade do benchmark.
+O despacho fica em `llm/factory.py` e olha o campo `LLMConfig.provider`, nunca
+o nome do modelo: a slug `openai/gpt-5.6-luna` é do OpenRouter, e casar por
+substring `"gpt"` a mandaria para a API nativa da OpenAI.
+
+Lineup **executado** (01/09/2026), todo via OpenRouter:
+`openai/gpt-5.6-luna`, `google/gemini-3.1-flash-lite`, `qwen/qwen3.8-27b`,
+`deepseek/deepseek-v4-flash-0731`.
+
+Dois modelos previstos ficaram de fora: o `openai/gpt-5.6-terra` foi descartado
+por custo (sozinho seria 60 % do orçamento) e o `google/gemini-3.7-flash` por
+não permitir desligar o raciocínio, o que criaria assimetria com os demais.
+Os modelos abertos do escopo original (Llama 3.3 70B e Qwen 2.5 72B) foram
+descontinuados pela Groq durante o projeto, e o plano pago da Groq esteve
+indisponível — daí a migração.
+
+Resultados: `docs/resultados_matriz_completa.md`.
+
+Os parâmetros de amostragem não são uniformizáveis entre provedores — ver §5.1.
 
 ---
 
@@ -358,9 +376,22 @@ uv pip install -e ".[dev]"
 
 ## 5. Decisões de Design Relevantes para o TCC
 
-### 5.1 temperature=0.0 em todos os modelos
+### 5.1 Parâmetros de amostragem: o padrão de cada provedor
 
-Garante que o benchmark seja reprodutível: para o mesmo prompt, o mesmo modelo produz o mesmo SQL. Isso é essencial para comparações científicas. Modelos com `temperature > 0` introduziriam variabilidade não controlada.
+O projeto pretendia fixar `temperature=0.0` em todos os modelos para garantir
+determinismo. **Isso não é realizável.** Os modelos Claude atuais rejeitam
+parâmetros de amostragem com HTTP 400, e o mesmo vale para os modelos de
+raciocínio de outros provedores. Não existe configuração de temperatura comum
+aos quatro provedores.
+
+A decisão é usar o padrão de cada provedor e **registrar a não-uniformidade
+como limitação do trabalho**: as respostas não são determinísticas e uma
+reexecução pode produzir SQL diferente para o mesmo prompt. A rodada do
+Claude Sonnet 5 de 30/08/2026 foi feita sem o parâmetro.
+
+A alternativa — fixar temperatura só onde o provedor aceita — seria pior:
+introduziria uma assimetria de tratamento exatamente entre os modelos que o
+trabalho se propõe a comparar.
 
 ### 5.2 Evidence como variável de controle
 
@@ -384,17 +415,50 @@ Cada componente principal é definido como classe abstrata. Isso permite:
 - Adicionar um novo SGBD implementando apenas `DBConnector`
 - Trocar o dataset (ex.: usar Spider no futuro) implementando `DatasetLoader`
 
+### 5.6 Pinagem de provedor no OpenRouter
+
+A partir de 31/08/2026 os modelos são acessados pelo OpenRouter. O roteamento
+padrão faz balanceamento entre provedores upstream com peso inverso ao quadrado
+do preço — ou seja, **troca de provedor entre requisições**. Numa rodada de 500
+questões isso espalha o experimento por provedores e quantizações diferentes,
+e a comparação entre modelos deixa de ser válida.
+
+Por isso toda requisição leva `provider: {only: [...], allow_fallbacks: false}`.
+Desligar o fallback é parte essencial: pinar sem isso faria o roteador cair em
+outro provedor no primeiro erro, silenciosamente. Falhar é o comportamento
+desejado — um erro visível custa uma repetição, um fallback silencioso invalida
+a rodada.
+
+O provedor que atendeu cada chamada é gravado em cada registro de resultado
+(campo `provider`), o que permite verificar depois da rodada que a pinagem
+valeu do início ao fim.
+
+A pinagem não é só sobre reprodutibilidade: provedores servem o mesmo modelo
+com qualidade diferente. Em 31/08/2026 a CoreWeave (fp8) injetava tokens de
+lixo no meio do SQL do DeepSeek — 4 falhas em 10 questões, contra 2 (erros
+legítimos do modelo) na Novita com o mesmo prompt. Sem pinagem e sem ensaio, o
+benchmark teria atribuído ao modelo um defeito do provedor.
+
+`config.PROVEDORES_POR_MODELO` registra quantos provedores servem cada modelo;
+`llm/factory.py` recusa construir o conector de um modelo multiprovedor sem
+pinagem. Ver `docs/runbook_openrouter.md`.
+
 ---
 
 ## 6. Próximos Passos de Implementação
 
-| Prioridade | Tarefa |
-|---|---|
-| Alta | Implementar `get_schema()` para PostgreSQL e MariaDB via `information_schema` |
-| Alta | Script de carga dos dados BIRD nos SGBDs (`setup_databases.sh`) |
-| Alta | Download e organização do dataset BIRD Mini-Dev em `data/bird/` |
-| Média | Validação de saída dos LLMs (extração de SQL de respostas com markdown) |
-| Média | Exportação CSV no `ReportGenerator` |
-| Média | Paralelização de chamadas LLM com `asyncio` ou `ThreadPoolExecutor` |
-| Baixa | Gráficos de visualização (matplotlib/plotly) |
-| Baixa | Migração do conector Google para `google.genai` (SDK atual) |
+Atualizado em 31/08/2026.
+
+| Prioridade | Tarefa | Situação |
+|---|---|---|
+| Alta | `get_schema()` para PostgreSQL e MariaDB via `information_schema` | ✅ feito |
+| Alta | Script de carga dos dados BIRD nos SGBDs (`scripts/setup_databases.sh`) | ✅ feito |
+| Alta | Download e organização do dataset BIRD Mini-Dev | ✅ feito |
+| Média | Extração de SQL de respostas com markdown (`llm/sql_extract.py`) | ✅ feito |
+| Média | Exportação CSV | ✅ feito (`results/csv/`) |
+| Baixa | Migração do conector Google para `google.genai` | ✅ feito |
+| Alta | Relatório comparativo entre modelos | ✅ feito (`cli.py compare`) |
+| — | Teste estatístico | removido a pedido; decisão de escopo com o orientador |
+| Média | Rodar os 5 modelos do OpenRouter nas três etapas × três SGBDs | pendente (crédito) |
+| Média | Paralelização de chamadas LLM | pendente |
+| Baixa | Gráficos de visualização (matplotlib/plotly) | pendente |
