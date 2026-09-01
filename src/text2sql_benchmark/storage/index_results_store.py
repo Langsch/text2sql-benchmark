@@ -47,6 +47,8 @@ class IndexBenchmarkResult:
     # True quando o provedor cortou a resposta em max_tokens: a lista de
     # indices esta incompleta e o numero sugerido nao reflete o modelo.
     truncated: bool = False
+    # Provedor upstream que atendeu a chamada (so via OpenRouter).
+    provider: str = ""
     # Indexes suggested
     indexes_suggested: list[dict] = field(default_factory=list)
     indexes_applied: int = 0

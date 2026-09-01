@@ -10,7 +10,8 @@ from ..config import BenchmarkConfig
 from ..dataset import BirdLoader, BirdInstance
 from ..db import DBConnector, PostgreSQLConnector, MariaDBConnector, SQLiteConnector
 from ..db.sqlite_connector import QueryTimeout
-from ..llm import LLMConnector, AnthropicConnector, OpenAIConnector, GoogleConnector, GroqConnector
+from ..llm import LLMConnector
+from ..llm.factory import build_llm_connectors
 from ..metrics import execution_accuracy, exact_match, measure_latency
 from ..metrics.explain_parsers import PostgreSQLExplainParser, MariaDBExplainParser, SQLiteExplainParser
 from ..prompt import BirdPromptBuilder
@@ -69,22 +70,6 @@ _EXPLAIN_PARSERS = {
 }
 
 
-def _build_llm_connectors(cfg: BenchmarkConfig) -> list[LLMConnector]:
-    connectors: list[LLMConnector] = []
-    for llm_cfg in cfg.llms:
-        if not llm_cfg.api_key:
-            continue
-        if "claude" in llm_cfg.model_name:
-            connectors.append(AnthropicConnector(llm_cfg.model_name, llm_cfg.api_key))
-        elif "gpt" in llm_cfg.model_name:
-            connectors.append(OpenAIConnector(llm_cfg.model_name, llm_cfg.api_key))
-        elif "gemini" in llm_cfg.model_name:
-            connectors.append(GoogleConnector(llm_cfg.model_name, llm_cfg.api_key))
-        else:
-            connectors.append(GroqConnector(llm_cfg.model_name, llm_cfg.api_key))
-    return connectors
-
-
 def _build_db_connectors(cfg: BenchmarkConfig, sgbd: str | None = None) -> list[DBConnector]:
     # PostgreSQL e MariaDB usam os .sqlite como fonte do mapa tabela->db_id,
     # necessario caso os dumps do BIRD tenham sido carregados num schema unico.
@@ -130,11 +115,11 @@ class BenchmarkRunner:
         ja_feitas: set[tuple] = set()
         if resume:
             self._store.load(Path(resume))
-            descartados = self._store.descartar("llm_error")
+            descartados = self._store.descartar("llm_error", "system_error")
             if descartados:
                 console.print(
                     f"[yellow]{descartados} resultados descartados "
-                    "(falha de API, nao do modelo) — serao refeitos.[/yellow]"
+                    "(falha de API ou do benchmark, nao do modelo) — serao refeitos.[/yellow]"
                 )
             anteriores = list(self._store._results)
             for r in anteriores:
@@ -156,17 +141,16 @@ class BenchmarkRunner:
             self._loader.load(self._cfg.bird_data_path, dialect=dialect)
             and self._loader.iter_instances(difficulty=difficulty, limit=limit, db_id=db_id)
         )
-        llms = _build_llm_connectors(self._cfg)
-        if model:
-            llms = [l for l in llms if l.model_name == model]
-            if not llms:
-                disponiveis = [
-                    c.model_name for c in _build_llm_connectors(self._cfg)
-                ]
-                raise ValueError(
-                    f"Modelo {model!r} nao tem chave configurada. "
-                    f"Disponiveis: {disponiveis}"
-                )
+        # Com `model`, a fabrica filtra por nome e deixa subir o erro de
+        # pinagem ausente: quem pediu aquele modelo precisa saber por que ele
+        # nao vai rodar, em vez de ver "sem chave configurada".
+        llms = build_llm_connectors(self._cfg, model=model)
+        if not llms:
+            disponiveis = [c.model_name for c in build_llm_connectors(self._cfg)]
+            alvo = f"Modelo {model!r} nao tem chave configurada. " if model else ""
+            raise ValueError(
+                f"{alvo}Modelos prontos para rodar: {disponiveis or '(nenhum)'}"
+            )
         dbs = _build_db_connectors(self._cfg, sgbd=sgbd)
         if not dbs:
             raise ValueError(f"Nenhum SGBD configurado para sgbd={sgbd!r}")
@@ -213,9 +197,13 @@ class BenchmarkRunner:
 
         # A chamada ao LLM fica num try proprio: falha de API nao pode ser
         # confundida com SQL invalido gerado pelo modelo.
+        provider = ""
+        truncated = False
         try:
             llm_response = llm.generate(prompt)
             sql_generated = llm_response.sql
+            provider = llm_response.provider
+            truncated = llm_response.truncated
         except Exception as exc:
             return BenchmarkResult(
                 instance_id=instance.instance_id,
@@ -278,4 +266,6 @@ class BenchmarkRunner:
             error=error,
             error_type=error_type,
             timed_out_after_ms=timed_out_after_ms,
+            provider=provider,
+            truncated=truncated,
         )

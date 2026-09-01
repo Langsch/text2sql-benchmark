@@ -32,6 +32,15 @@ class BenchmarkResult:
     error_type: str | None = None
     # Quanto a query rodou antes de ser abortada, quando error_type=timeout.
     timed_out_after_ms: float = 0.0
+    # True quando o provedor cortou a resposta por atingir o teto de tokens.
+    # Sem isto o corte fica invisivel: o extrator devolve o SQL parcial, que
+    # pode ate executar, e o registro parece integro. A Etapa 2 ja gravava.
+    truncated: bool = False
+    # Provedor upstream que atendeu a chamada (so via OpenRouter). Registrado
+    # por questao para permitir verificar, depois da rodada, que a pinagem
+    # valeu do inicio ao fim — sem isso nao da para afirmar na metodologia sob
+    # que condicao o experimento correu.
+    provider: str = ""
 
 
 class ResultsStore:
@@ -71,13 +80,17 @@ class ResultsStore:
         self._results = [BenchmarkResult(**d) for d in data]
         return self._results
 
-    def descartar(self, error_type: str) -> int:
-        """Remove resultados de um tipo de erro. Devolve quantos saíram.
+    def descartar(self, *error_types: str) -> int:
+        """Remove resultados dos tipos de erro dados. Devolve quantos saíram.
 
-        Usado na retomada: um `llm_error` e chamada que nao aconteceu, entao
-        o registro precisa sair antes de a questao ser refeita — senao o
-        arquivo final teria a falha antiga e o resultado novo lado a lado.
+        Usado na retomada. Nem `llm_error` nem `system_error` sao resultado do
+        modelo: o primeiro e chamada que nao aconteceu, o segundo e defeito do
+        proprio benchmark. Os dois precisam sair antes de a questao ser refeita
+        — senao o arquivo final teria a falha antiga e o resultado novo lado a
+        lado. `sql_error` e `timeout` ficam: sao resultado e refaze-los
+        mudaria a medicao.
         """
+        alvos = set(error_types)
         antes = len(self._results)
-        self._results = [r for r in self._results if r.error_type != error_type]
+        self._results = [r for r in self._results if r.error_type not in alvos]
         return antes - len(self._results)

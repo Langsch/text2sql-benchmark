@@ -20,7 +20,8 @@ from ..db.isolation import (
     IsolamentoPorCopia,
     IsolamentoPorTransacao,
 )
-from ..llm import LLMConnector, AnthropicConnector, OpenAIConnector, GoogleConnector, GroqConnector
+from ..llm import GroqConnector, LLMConnector
+from ..llm.factory import build_llm_connectors
 from ..metrics import measure_latency
 from ..metrics.explain_parsers import (
     MariaDBExplainParser,
@@ -69,22 +70,6 @@ def _build_run_id(db_id: str | None, difficulty: str | None) -> str:
     if difficulty:
         parts.append(difficulty)
     return "_".join(parts)
-
-
-def _build_llm_connectors(cfg: BenchmarkConfig) -> list[LLMConnector]:
-    connectors: list[LLMConnector] = []
-    for llm_cfg in cfg.llms:
-        if not llm_cfg.api_key:
-            continue
-        if "claude" in llm_cfg.model_name:
-            connectors.append(AnthropicConnector(llm_cfg.model_name, llm_cfg.api_key))
-        elif "gpt" in llm_cfg.model_name:
-            connectors.append(OpenAIConnector(llm_cfg.model_name, llm_cfg.api_key))
-        elif "gemini" in llm_cfg.model_name:
-            connectors.append(GoogleConnector(llm_cfg.model_name, llm_cfg.api_key))
-        else:
-            connectors.append(GroqConnector(llm_cfg.model_name, llm_cfg.api_key))
-    return connectors
 
 
 def parse_index_statements(raw: str) -> list[str]:
@@ -160,9 +145,17 @@ class IndexBenchmarkRunner:
         for inst in instances:
             by_db[inst.db_id].append(inst)
 
-        llms = _build_llm_connectors(self._cfg)
-        if model:
-            llms = [l for l in llms if l.model_name == model]
+        # Com `model`, a fabrica filtra por nome e deixa subir o erro de
+        # pinagem ausente. Sem a checagem abaixo, um modelo sem chave ou sem
+        # pinagem produzia zero combinacoes e gravava um JSON vazio, que so
+        # aparece como problema na hora de consolidar.
+        llms = build_llm_connectors(self._cfg, model=model)
+        if not llms:
+            disponiveis = [c.model_name for c in build_llm_connectors(self._cfg)]
+            alvo = f"Modelo {model!r} nao tem chave configurada. " if model else ""
+            raise ValueError(
+                f"{alvo}Modelos prontos para rodar: {disponiveis or '(nenhum)'}"
+            )
 
         total_combos = len(by_db) * len(llms)
         console.print(
@@ -298,6 +291,7 @@ class IndexBenchmarkRunner:
             index_prompt=prompt,
             dialect=self._dialect,
             truncated=llm_response.truncated,
+            provider=llm_response.provider,
             indexes_suggested=[asdict(a) for a in applications],
             indexes_applied=applied,
             indexes_failed=failed,

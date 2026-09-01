@@ -4,6 +4,7 @@ import psycopg2
 
 from .base import DBConnector
 from .table_map import tabelas_de
+from .sql_split import primeiro_statement
 
 _SCHEMA_PADRAO = "public"
 
@@ -50,11 +51,19 @@ class PostgreSQLConnector(DBConnector):
             return cur.fetchall() if cur.description else []
 
     def explain(self, sql: str, db_id: str = "") -> str:
+        # Quando o modelo devolve mais de um statement, o EXPLAIN so prefixa o
+        # primeiro: os demais rodam crus e o cursor termina com o resultado da
+        # ultima query, nao com um plano. Ai `row[0]` vem inteiro e o join
+        # estoura com "expected str instance, int found", virando system_error
+        # numa questao que o modelo ate respondeu. Explicar so o primeiro
+        # statement resolve sem mudar a semantica de `execute`, que precisa
+        # continuar identica a da rodada do Sonnet.
+        primeiro = primeiro_statement(sql)
         with self._conn.cursor() as cur:
             self._usar(cur, db_id)
-            cur.execute(f"EXPLAIN (ANALYZE, FORMAT TEXT) {sql}")
+            cur.execute(f"EXPLAIN (ANALYZE, FORMAT TEXT) {primeiro}")
             rows = cur.fetchall()
-        return "\n".join(row[0] for row in rows)
+        return "\n".join(str(row[0]) for row in rows)
 
     def get_schema(self, db_id: str) -> str:
         """Reconstroi o DDL a partir do information_schema.
