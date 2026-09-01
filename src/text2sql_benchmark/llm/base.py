@@ -15,6 +15,11 @@ class LLMResponse:
     # o corte passa despercebido: o parser descarta o statement incompleto e o
     # resultado parece integro.
     truncated: bool = False
+    # Provedor upstream que efetivamente atendeu a chamada. So o OpenRouter
+    # preenche: la a mesma model slug pode ser servida por provedores
+    # diferentes, com quantizacoes diferentes, e a metodologia exige registrar
+    # sob qual condicao cada rodada foi feita.
+    provider: str = ""
 
 
 class LLMConnector(ABC):
