@@ -199,11 +199,14 @@ class BenchmarkRunner:
         # confundida com SQL invalido gerado pelo modelo.
         provider = ""
         truncated = False
+        input_tokens = output_tokens = 0
         try:
             llm_response = llm.generate(prompt)
             sql_generated = llm_response.sql
             provider = llm_response.provider
             truncated = llm_response.truncated
+            input_tokens = llm_response.input_tokens
+            output_tokens = llm_response.output_tokens
         except Exception as exc:
             return BenchmarkResult(
                 instance_id=instance.instance_id,
@@ -268,4 +271,6 @@ class BenchmarkRunner:
             timed_out_after_ms=timed_out_after_ms,
             provider=provider,
             truncated=truncated,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
         )

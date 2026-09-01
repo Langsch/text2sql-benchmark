@@ -3,7 +3,12 @@
 > Cinco modelos × três SGBDs × três etapas = **15 células, 7.500 questões medidas**.
 >
 > **Rodadas:** 30/08/2026 (Claude Sonnet 5) e 31/08–01/09/2026 (demais).
-> **Custo total de API:** US$ 3,02.
+> **Custo de API:** US$ 3,69 no OpenRouter (quatro modelos, 12 células, mais
+> smokes, ensaios e o subteste de rota) e cerca de US$ 7,40 na API da Anthropic
+> (Claude Sonnet 5, três células). São faturas separadas: o saldo do OpenRouter
+> **não** inclui o Sonnet nativo. O valor da Anthropic vem do registro de
+> 30/08/2026 e inclui desenvolvimento e retrabalho, não sendo o custo limpo das
+> três células.
 >
 > Metodologia e decisões: `docs/pipeline_e_resultados.md`.
 > Operação: `docs/runbook_openrouter.md`. Design: `docs/arquitetura.md`.
@@ -53,17 +58,33 @@ errados. Ver §5.4.
 
 ### 2.3 Erros de execução (em 500)
 
-| Modelo | SQLite | PostgreSQL | MariaDB |
-|---|---:|---:|---:|
-| Claude Sonnet 5 | 5 | 13 | 14 |
-| Gemini 3.1 Flash Lite | 7 | 18 | 43 |
-| GPT-5.6 Luna | 12 | 14 | 17 |
-| DeepSeek V4 Flash | 19 | 28 | 35 |
-| Qwen 3.8 27B | 39 | 66 | 75 |
+Separados por tipo, porque medem coisas diferentes: `sql_error` é SQL inválido
+— falha de corretude do modelo — e `timeout` é query válida que excedeu 30 s,
+que é resultado de eficiência.
 
-Nas 7.500 medições não há **nenhum** `llm_error` nem `system_error`: todo erro
-registrado é `sql_error` (SQL inválido, resultado do modelo) ou `timeout`
-(query válida acima de 30 s, resultado de eficiência).
+| Modelo | SGBD | `sql_error` | `timeout` | total |
+|---|---|---:|---:|---:|
+| Claude Sonnet 5 | SQLite | 4 | 1 | 5 |
+| Claude Sonnet 5 | PostgreSQL | 13 | 0 | 13 |
+| Claude Sonnet 5 | MariaDB | 14 | 0 | 14 |
+| Gemini 3.1 Flash Lite | SQLite | 4 | 3 | 7 |
+| Gemini 3.1 Flash Lite | PostgreSQL | 18 | 0 | 18 |
+| Gemini 3.1 Flash Lite | MariaDB | 43 | 0 | 43 |
+| Qwen 3.8 27B | SQLite | 37 | 2 | 39 |
+| Qwen 3.8 27B | PostgreSQL | 66 | 0 | 66 |
+| Qwen 3.8 27B | MariaDB | 75 | 0 | 75 |
+| GPT-5.6 Luna | SQLite | 9 | 3 | 12 |
+| GPT-5.6 Luna | PostgreSQL | 14 | 0 | 14 |
+| GPT-5.6 Luna | MariaDB | 17 | 0 | 17 |
+| DeepSeek V4 Flash | SQLite | 15 | 4 | 19 |
+| DeepSeek V4 Flash | PostgreSQL | 28 | 0 | 28 |
+| DeepSeek V4 Flash | MariaDB | 35 | 0 | 35 |
+
+**Os 13 timeouts estão todos no SQLite**, nenhum nos dois servidores. É
+coerente com a natureza dos motores: o SQLite não tem otimizador baseado em
+custo nem paralelismo.
+
+Nas 7.500 medições não há **nenhum** `llm_error` nem `system_error`.
 
 ### 2.4 Por dificuldade
 
@@ -201,15 +222,61 @@ Não há padrão. No MariaDB inverte em **todos** os modelos; o Gemini inverte
 nos três. **Este achado não se sustenta e não deve ser reportado como
 regularidade.**
 
-### 4.5 Contaminação de dialeto
+### 4.5 Contaminação de dialeto — quantificada
 
-Funções do SQLite aparecem nas consultas geradas para PostgreSQL e MariaDB em
-todos os modelos: `strftime`, `YEAR()`, `CAST(x AS REAL)`, `SUBTRACT`,
-`DIVIDE`. As duas últimas não existem em SQL nenhum — vêm do vocabulário do
-próprio enunciado do BIRD, reproduzido como se fosse função.
+Construções válidas em um SGBD aparecem nas consultas geradas para outro, em
+todos os cinco modelos. A contagem abaixo conta cada construção **apenas onde
+ela é inválida** naquele SGBD:
 
-A taxa de SQL inválido escala inversamente com o porte do modelo: Sonnet 1,0 %,
-Gemini 1,4 %, Luna 2,4 %, DeepSeek 3,8 %, Qwen 7,8 % (SQLite).
+| Construção | Inválida em |
+|---|---|
+| `strftime(...)` | PostgreSQL, MariaDB (é função do SQLite) |
+| `YEAR(...)` | SQLite, PostgreSQL (é função do MySQL/MariaDB) |
+| `CAST(x AS REAL)` | MariaDB (REAL não é tipo de CAST no MariaDB) |
+| `SUBTRACT(...)`, `DIVIDE(...)` | todos — não existem em SQL nenhum |
+
+Consultas com ao menos uma construção inválida para o alvo:
+
+| Modelo | SQLite | PostgreSQL | MariaDB | Total |
+|---|---:|---:|---:|---:|
+| Claude Sonnet 5 | 2 | 6 | 8 | 16 |
+| Gemini 3.1 Flash Lite | 0 | 7 | 11 | 18 |
+| Qwen 3.8 27B | 6 | 12 | 6 | 24 |
+| GPT-5.6 Luna | 0 | 2 | 4 | 6 |
+| DeepSeek V4 Flash | 3 | 4 | 9 | 16 |
+| **Total** | **11** | **31** | **38** | **80** |
+
+**As 80 consultas contaminadas falharam — taxa de falha de 100 %.** A
+construção de dialeto errado é sempre fatal, nunca degrada silenciosamente para
+um resultado incorreto. Elas respondem por 13 % dos 613 erros da matriz.
+
+A contaminação é mínima no SQLite (11 casos) e cresce nos servidores (31 e 38),
+o que é esperado: o SQLite é o dialeto de origem do dataset.
+
+`SUBTRACT` e `DIVIDE` merecem nota à parte — 16 ocorrências. Não existem em
+SQL nenhum: vêm do vocabulário do próprio enunciado do BIRD, que descreve
+cálculos em prosa, e o modelo os reproduz como se fossem funções. É evidência
+de que a formulação do dataset influencia o SQL gerado.
+
+### 4.5.1 Taxa de SQL inválido por modelo
+
+Contando apenas `sql_error`, sem os timeouts:
+
+| Modelo | SQLite | PostgreSQL | MariaDB |
+|---|---:|---:|---:|
+| Claude Sonnet 5 | 0,8 % | 2,6 % | 2,8 % |
+| Gemini 3.1 Flash Lite | 0,8 % | 3,6 % | 8,6 % |
+| GPT-5.6 Luna | 1,8 % | 2,8 % | 3,4 % |
+| DeepSeek V4 Flash | 3,0 % | 5,6 % | 7,0 % |
+| Qwen 3.8 27B | 7,4 % | 13,2 % | 15,0 % |
+
+A ordem é estável nos três SGBDs e a taxa cresce do SQLite para os servidores
+em todos os modelos.
+
+> **Nota.** Uma versão anterior deste documento atribuía essa ordem ao porte
+> dos modelos. A atribuição foi retirada: o número de parâmetros é público
+> apenas para o Qwen (27B); os outros quatro são fechados. O padrão está
+> descrito, a causa fica em aberto.
 
 ### 4.6 O tier econômico chega perto
 
@@ -302,15 +369,29 @@ aggregate: COUNT()` — e foi apenas rotulada, não reexecutada.
 
 Os modelos do OpenRouter rodaram com `reasoning.effort = none`.
 
-**Motivo empírico:** o DeepSeek gastou 2.986 tokens de saída raciocinando para
-devolver seis linhas de SQL — 35 vezes o que o Sonnet gastou na mesma tarefa.
-Com o raciocínio desligado, caiu para 46 tokens e 2,0 s por questão (contra
-25,9 s). Custo da matriz: de US$ 50 estimados para US$ 2,83 reais.
+**Motivo empírico**, medido no mesmo modelo, mesma questão e mesmo provedor,
+variando apenas o parâmetro:
+
+| DeepSeek V4 Flash | Saída | Latência |
+|---|---:|---:|
+| Com raciocínio (padrão) | 2.986 tokens | 25,9 s |
+| `reasoning.effort = none` | **46 tokens** | **2,0 s** |
+
+Fator **65×** em tokens de saída e 13× em latência, para produzir seis linhas
+de SQL equivalentes. A estimativa de custo da matriz caiu de US$ 50 para os
+US$ 3,69 efetivamente gastos.
 
 **Justificativa metodológica:** a rodada nativa do Sonnet, que é a linha de
-base, gastou 133 tokens de saída — ou seja, praticamente não raciocinou,
-apesar de o thinking adaptativo da Anthropic vir ligado por padrão. Desligar o
-raciocínio nos demais aproxima a condição da linha de base em vez de afastá-la.
+base, praticamente não raciocinou, apesar de o thinking adaptativo da Anthropic
+vir ligado por padrão — a saída observada ficou na ordem de uma centena de
+tokens, contra os milhares dos modelos que raciocinam. Desligar o raciocínio
+nos demais aproxima a condição da linha de base em vez de afastá-la.
+
+> **Limitação desta comparação.** A Etapa 1 não registrava `output_tokens`
+> (corrigido em 01/09/2026, válido para rodadas futuras). O consumo do Sonnet
+> por questão vem de chamadas de amostra, não do total da rodada, e por isso
+> **não** se reporta aqui um fator Sonnet × DeepSeek: ele misturaria medições
+> de origens diferentes. O fator 65× acima é controlado e se sustenta.
 
 **Limitação a declarar:** não se está medindo o teto de capacidade de cada
 modelo. Números comparados aos de leaderboards públicos aparecerão mais baixos.

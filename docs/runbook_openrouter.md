@@ -175,9 +175,10 @@ A coluna da direita é a de orçamento: a base de saída foi medida no Sonnet
 (~84 tokens por resposta) e um modelo que raciocine antes de responder gasta
 mais. Mesmo no pior caso (~840 tokens) o total fica em US$ 16,76.
 
-**Custo real medido (01/09/2026): US$ 3,02** pelos quatro modelos nas três
+**Custo real medido (01/09/2026): US$ 3,69 no OpenRouter** pelos quatro modelos nas três
 etapas e três SGBDs, incluindo smokes, ensaios e o subteste de rota. A
-estimativa acima era conservadora porque supunha o consumo de saída do Sonnet;
+estimativa acima era conservadora porque supunha o consumo de saída do Sonnet,
+que não raciocina nesta tarefa;
 com o raciocínio desligado, a saída ficou em 44 a 52 tokens por questão.
 **US$ 10 cobrem a matriz inteira com folga.**
 

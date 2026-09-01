@@ -32,6 +32,11 @@ class BenchmarkResult:
     error_type: str | None = None
     # Quanto a query rodou antes de ser abortada, quando error_type=timeout.
     timed_out_after_ms: float = 0.0
+    # Tokens da chamada. A Etapa 1 nao os gravava, e sem eles nao havia como
+    # recontar o consumo de saida por questao: a comparacao entre modelos
+    # dependia de amostras avulsas e teve de ser retirada do relatorio.
+    input_tokens: int = 0
+    output_tokens: int = 0
     # True quando o provedor cortou a resposta por atingir o teto de tokens.
     # Sem isto o corte fica invisivel: o extrator devolve o SQL parcial, que
     # pode ate executar, e o registro parece integro. A Etapa 2 ja gravava.
