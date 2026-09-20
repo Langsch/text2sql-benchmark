@@ -370,6 +370,45 @@ Uma quarta questão (Sonnet × SQLite, id 168) tinha erro sem classificação po
 ser anterior ao campo `error_type`. Era `sql_error` legítimo — `misuse of
 aggregate: COUNT()` — e foi apenas rotulada, não reexecutada.
 
+### 5.8 `ANALYZE` nunca rodou no MariaDB
+
+`db/isolation.py` enviava `ANALYZE` sem argumento após criar os índices, e
+engolia a exceção com `except Exception: pass`. SQLite e PostgreSQL aceitam essa
+forma; **o MariaDB não** — exige `ANALYZE TABLE <tabela>` e responde
+`ERROR 1064` ao comando nu. Confirmado contra MariaDB 11.8 em 20/09/2026.
+
+Consequência: nas cinco células MariaDB das Etapas 2 e 3, nenhuma estatística
+foi recalculada após a criação dos índices. O artigo afirmava o contrário, e
+afirmava ainda que sem esse passo a medição ficaria inválida.
+
+**Impacto medido.** Quatro bancos do Sonnet × MariaDB foram remedidos em três
+estados — sem índices, com índices sem `ANALYZE` (o que a rodada publicada fez)
+e com índices após `ANALYZE TABLE` — em **duas réplicas independentes**:
+
+| Banco | n | índices | delta réplica 1 | delta réplica 2 | sinal |
+|---|---:|---:|---:|---:|---|
+| `card_games` | 40 | 37 | −11,0 % | −8,3 % | mantém |
+| `codebase_community` | 40 | 40 | +6,3 % | −6,5 % | **inverte** |
+| `formula_1` | 40 | 40 | −18,2 % | +10,0 % | **inverte** |
+| `thrombosis_prediction` | 40 | 41 | −1,7 % | −0,1 % | mantém |
+
+**Dois dos quatro bancos invertem o sinal entre réplicas.** E o próprio speedup
+medido sem `ANALYZE` variou de 1,9 % a 12,9 % entre as duas execuções — a mesma
+ordem de grandeza dos deltas atribuídos ao `ANALYZE`. O efeito é, portanto,
+indistinguível do ruído de medição.
+
+A explicação é conhecida: o InnoDB calcula as estatísticas de um índice no
+momento em que o constrói, o que torna a chamada explícita a `ANALYZE` em boa
+parte redundante naquele sistema.
+
+**Conclusão:** o defeito não invalida os números publicados, mas invalidava a
+afirmação do texto. Corrigido em `isolation.py` com recurso a `ANALYZE TABLE`
+quando a forma nua falha, e coberto por
+`tests/test_analyze_por_dialeto.py`. O texto do artigo passou a declarar a
+situação real em vez de afirmar um controle que não existia.
+
+---
+
 ---
 
 ## 6. Decisões metodológicas desta rodada
