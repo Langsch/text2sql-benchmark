@@ -137,14 +137,32 @@ class IsolamentoPorTransacao(EstrategiaIsolamento):
             except Exception as exc:
                 resultados.append(AplicacaoIndice(stmt, False, str(exc)))
 
-        # Estatisticas atualizadas: sem isso o otimizador pode ignorar os
-        # indices recem-criados e a medicao "depois" fica invalida.
+        self._atualizar_estatisticas(db_id)
+
+        return self._conector, resultados
+
+    def _atualizar_estatisticas(self, db_id: str) -> None:
+        """Recalcula estatisticas apos criar os indices.
+
+        SQLite e PostgreSQL aceitam `ANALYZE` sem argumento. O MariaDB nao: la
+        a forma e `ANALYZE TABLE <tabela>`, e o comando nu falha com erro 1064.
+        Segue-se o mesmo padrao de `limpar()`: tenta a forma simples e, quando
+        ela falha, recorre ao catalogo para tratar tabela a tabela.
+        """
         try:
             self._conector.execute("ANALYZE", db_id=db_id)
+            return
         except Exception:
             pass
 
-        return self._conector, resultados
+        for tabela in {
+            t for nome in self._criados
+            if (t := self._tabela_do_indice(nome, db_id)) is not None
+        }:
+            try:
+                self._conector.execute(f"ANALYZE TABLE `{tabela}`", db_id=db_id)
+            except Exception:
+                pass
 
     def _gravar_registro(self, db_id: str) -> None:
         self._registro.parent.mkdir(parents=True, exist_ok=True)
