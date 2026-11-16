@@ -1,0 +1,16 @@
+modelo,sgbd,indices_aplicados,indices_rejeitados,mediana_speedup_referencia,mediana_speedup_geradas,consultas_medidas_e3,pct_melhoraram,pct_passam_a_usar_indice
+claude-sonnet-5,sqlite,306,0,2.8412,3.5228,495,86.87,56.36
+claude-sonnet-5,postgresql,305,1,1.5416,1.6796,487,74.95,32.44
+claude-sonnet-5,mariadb,296,12,1.4634,1.6518,486,75.51,11.93
+google/gemini-3.1-flash-lite,sqlite,234,1,2.3038,2.5847,493,82.96,51.93
+google/gemini-3.1-flash-lite,postgresql,233,1,1.3138,1.3952,482,75.10,29.46
+google/gemini-3.1-flash-lite,mariadb,182,22,1.3018,1.2194,457,75.71,8.97
+qwen/qwen3.8-27b,sqlite,365,1,2.6576,3.1550,461,89.37,55.31
+qwen/qwen3.8-27b,postgresql,325,27,1.4381,1.2600,434,70.74,32.49
+qwen/qwen3.8-27b,mariadb,240,32,1.3619,1.2441,425,75.53,12.24
+openai/gpt-5.6-luna,sqlite,332,2,3.2665,4.1649,488,89.34,57.58
+openai/gpt-5.6-luna,postgresql,335,1,1.5397,1.5534,484,78.31,34.30
+openai/gpt-5.6-luna,mariadb,323,9,1.6180,1.4286,483,75.36,12.63
+deepseek/deepseek-v4-flash-0731,sqlite,399,0,2.8762,3.1638,481,72.14,60.29
+deepseek/deepseek-v4-flash-0731,postgresql,430,5,1.7140,1.6200,471,77.71,38.22
+deepseek/deepseek-v4-flash-0731,mariadb,339,119,1.5878,1.3655,465,74.19,11.40
