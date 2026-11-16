@@ -1,0 +1,262 @@
+{
+  "descricao": "Arquivos de resultado que sustentam cada número do artigo. Uma célula é um par (modelo, SGBD) com suas três etapas. A cadeia foi extraída dos campos source_stage1_run e source_stage2_run gravados pela própria Etapa 3.",
+  "celulas": [
+    {
+      "modelo": "claude-sonnet-5",
+      "sgbd": "sqlite",
+      "etapa1": {
+        "arquivo": "results/runs/20260830_173220_sqlite_all.json",
+        "sha256": "38d57faa006c2a2722c389690929eeb79361c4bfdd80cdded6a1e8d3af8ec74a"
+      },
+      "etapa2": {
+        "arquivo": "results/runs/index_runs/20260830_151034_index_all.json",
+        "sha256": "36c0fe6299f1dc69cc6645cf054aa42c9e42f8f4a771a3fcd06fa052aa727ceb"
+      },
+      "etapa3": {
+        "arquivo": "results/runs/revalidation_runs/20260830_180649_revalidation_all.json",
+        "sha256": "05c5766eefa4de57fc7c567dbea086cc548abdfc9e7e040fd807744ca3672e6a"
+      }
+    },
+    {
+      "modelo": "claude-sonnet-5",
+      "sgbd": "postgresql",
+      "etapa1": {
+        "arquivo": "results/runs/20260830_211838_postgresql_all.json",
+        "sha256": "883e5ae49730ae111bf0fe948e0ee4486de867fe0e5053ccf7e16b2946dd754a"
+      },
+      "etapa2": {
+        "arquivo": "results/runs/index_runs/20260830_214907_index_all.json",
+        "sha256": "054349f982dfc3c358333d8ce5b5926e4716756ad2bbc28460f82d0811e04112"
+      },
+      "etapa3": {
+        "arquivo": "results/runs/revalidation_runs/20260830_215740_revalidation_all.json",
+        "sha256": "21dfe272842dbe3ba8ce440c7ed6a782d36e57e96a91cbdc83ccadba58285068"
+      }
+    },
+    {
+      "modelo": "claude-sonnet-5",
+      "sgbd": "mariadb",
+      "etapa1": {
+        "arquivo": "results/runs/20260830_223013_mariadb_all.json",
+        "sha256": "9706f8c919956b22b254cc51f5ed9677b51a4401beab6e0c98695ed54db1c22e"
+      },
+      "etapa2": {
+        "arquivo": "results/runs/index_runs/20260830_231836_index_all.json",
+        "sha256": "e8b12e4d82ce5fa3ccb056d2ed285a100dbe8c6008b63e3eb3584d28eb47090a"
+      },
+      "etapa3": {
+        "arquivo": "results/runs/revalidation_runs/20260830_233010_revalidation_all.json",
+        "sha256": "ba73b8db6b427a2fde7b643d00706f0b2c6f7498896ff6679995697cbb863438"
+      }
+    },
+    {
+      "modelo": "google/gemini-3.1-flash-lite",
+      "sgbd": "sqlite",
+      "etapa1": {
+        "arquivo": "results/runs/20260831_210806_sqlite_all.json",
+        "sha256": "24e9c75b7545ee32bfba44bf245a0b600ada8cca96d13a74ea338d909f892264"
+      },
+      "etapa2": {
+        "arquivo": "results/runs/index_runs/20260831_211810_index_all.json",
+        "sha256": "15a53834f77e8b6c8c551670e25466b83aa0342729af7041145cd6c3e781b654"
+      },
+      "etapa3": {
+        "arquivo": "results/runs/revalidation_runs/20260831_212147_revalidation_all.json",
+        "sha256": "81339db096254b895c7b781494914062e9ff60ed2378d86bb4f50c7f3da30545"
+      }
+    },
+    {
+      "modelo": "google/gemini-3.1-flash-lite",
+      "sgbd": "postgresql",
+      "etapa1": {
+        "arquivo": "results/runs/20260831_212318_postgresql_all.json",
+        "sha256": "cc4263d59401efb3ca3ab17dc129a75b5a0313b4ed7eb6b443031ad62b13e5cc"
+      },
+      "etapa2": {
+        "arquivo": "results/runs/index_runs/20260831_213413_index_all.json",
+        "sha256": "d7fb21a21fe89875159f1320010f5ae261db0edcf7d439020d0e4d85a1584a5c"
+      },
+      "etapa3": {
+        "arquivo": "results/runs/revalidation_runs/20260831_213749_revalidation_all.json",
+        "sha256": "157408f3b5751225ce285240b77f261cd320e4970aaca13efc85893b370d9f6a"
+      }
+    },
+    {
+      "modelo": "google/gemini-3.1-flash-lite",
+      "sgbd": "mariadb",
+      "etapa1": {
+        "arquivo": "results/runs/20260831_214151_mariadb_all.json",
+        "sha256": "cc37e87dad7b0c62bc53697b73cefe47c2276ecbfe2967edc69c19c3dc12a29e"
+      },
+      "etapa2": {
+        "arquivo": "results/runs/index_runs/20260831_215508_index_all.json",
+        "sha256": "eec856be7cb903cb55c082cb132e70bf7572ec881640917d92a50d3f5b2628fa"
+      },
+      "etapa3": {
+        "arquivo": "results/runs/revalidation_runs/20260831_220047_revalidation_all.json",
+        "sha256": "0a430092d3ec9b28d23519fd32438527f2e158ed73c228adb38a5bdd6c28077f"
+      }
+    },
+    {
+      "modelo": "qwen/qwen3.8-27b",
+      "sgbd": "sqlite",
+      "etapa1": {
+        "arquivo": "results/runs/20260831_223810_sqlite_all.json",
+        "sha256": "bc8b9fc87891e69d47382f6a63b095448c7764950e4ca145be8850fa582a4d51"
+      },
+      "etapa2": {
+        "arquivo": "results/runs/index_runs/20260831_230043_index_all.json",
+        "sha256": "4659e947458596b7a1043b6458795ecb2b456fba183f577bcecf57bd6c30969c"
+      },
+      "etapa3": {
+        "arquivo": "results/runs/revalidation_runs/20260831_230551_revalidation_all.json",
+        "sha256": "d84b0ef9834bd422f792270872793ab8693e5d3f10fe9c68ee6aecca57d12d33"
+      }
+    },
+    {
+      "modelo": "qwen/qwen3.8-27b",
+      "sgbd": "postgresql",
+      "etapa1": {
+        "arquivo": "results/runs/20260831_230722_postgresql_all.json",
+        "sha256": "ada220b8dbc2ee360f4c0f8337865f8cf847f32e065f8100cb5a029fb7c16c52"
+      },
+      "etapa2": {
+        "arquivo": "results/runs/index_runs/20260831_233052_index_all.json",
+        "sha256": "1c5ab85cb23aea8b209da5eab0317b52d24fcf8852f2b0c1a254e66815fe2854"
+      },
+      "etapa3": {
+        "arquivo": "results/runs/revalidation_runs/20260831_233545_revalidation_all.json",
+        "sha256": "b7b1808dda70b0c8fbdad8ff78fb3b0153463dc58d15a132e2ab33174d9237c5"
+      }
+    },
+    {
+      "modelo": "qwen/qwen3.8-27b",
+      "sgbd": "mariadb",
+      "etapa1": {
+        "arquivo": "results/runs/20260831_233902_mariadb_all.json",
+        "sha256": "b87b360098dffe2b026a2161301e6b0071b682a937c8862b18299cecc87eb957"
+      },
+      "etapa2": {
+        "arquivo": "results/runs/index_runs/20260901_000459_index_all.json",
+        "sha256": "6bf5bc3f85f372906f27da5da844e5f32cc7766acc83608189676fe5fd820030"
+      },
+      "etapa3": {
+        "arquivo": "results/runs/revalidation_runs/20260901_001146_revalidation_all.json",
+        "sha256": "8e72430b411cd704d884127dce21422aefe44754fbcfcbe8d1641010f43ffdad"
+      }
+    },
+    {
+      "modelo": "openai/gpt-5.6-luna",
+      "sgbd": "sqlite",
+      "etapa1": {
+        "arquivo": "results/runs/20260831_190457_sqlite_all.json",
+        "sha256": "67d788cf6ee3eda43ab11f2063c9077dda2a9ec453e7aa6f90803358144bc7b0"
+      },
+      "etapa2": {
+        "arquivo": "results/runs/index_runs/20260831_193024_index_all.json",
+        "sha256": "59657614dc14561f903a4cd22f484b67f45eabfd5f89c7ca1cf09f5af91ac009"
+      },
+      "etapa3": {
+        "arquivo": "results/runs/revalidation_runs/20260831_193401_revalidation_all.json",
+        "sha256": "5e157e76bf218593111eeeef37979a842caf089ea164f0f672df75b342fb6a36"
+      }
+    },
+    {
+      "modelo": "openai/gpt-5.6-luna",
+      "sgbd": "postgresql",
+      "etapa1": {
+        "arquivo": "results/runs/20260831_193835_postgresql_all.json",
+        "sha256": "dcb2a30c6d36b40d60a55243b66618511c2297ce7398d88b6e9513187d8a73ea"
+      },
+      "etapa2": {
+        "arquivo": "results/runs/index_runs/20260831_200322_index_all.json",
+        "sha256": "9d658f93cf080e6245e4a807abfb00a6e7167a876670b487ddf4881fddec7b08"
+      },
+      "etapa3": {
+        "arquivo": "results/runs/revalidation_runs/20260831_200734_revalidation_all.json",
+        "sha256": "44aea3bcbdf9651ffc5cc4447e0d46fb4a6ca54b001dc5d0f856666f5ef9083b"
+      }
+    },
+    {
+      "modelo": "openai/gpt-5.6-luna",
+      "sgbd": "mariadb",
+      "etapa1": {
+        "arquivo": "results/runs/20260831_201205_mariadb_all.json",
+        "sha256": "879d71920f78ab5aa7d7f2badca2e953ca957149d7a369135fa9c3805380994e"
+      },
+      "etapa2": {
+        "arquivo": "results/runs/index_runs/20260831_203938_index_all.json",
+        "sha256": "8a11bc8cd9b96b0f79ebf2dd94fab18c3abb1223d916324a1a5c6b20258424b9"
+      },
+      "etapa3": {
+        "arquivo": "results/runs/revalidation_runs/20260831_204615_revalidation_all.json",
+        "sha256": "cf338bf63c495628b0042bb3c92ac9690a8fa965949ea66f74e0ead6c0aadbcd"
+      }
+    },
+    {
+      "modelo": "deepseek/deepseek-v4-flash-0731",
+      "sgbd": "sqlite",
+      "etapa1": {
+        "arquivo": "results/runs/20260831_145942_sqlite_all.json",
+        "sha256": "465420af963db4dbc02ee8ba9e39b8dbc8d1d94daaa4d0a023277b1326b20ed8"
+      },
+      "etapa2": {
+        "arquivo": "results/runs/index_runs/20260831_152826_index_all.json",
+        "sha256": "78b38b03ba5280a8848ceb33e3b8b29ee596091411f791d323ff1a45842bbd12"
+      },
+      "etapa3": {
+        "arquivo": "results/runs/revalidation_runs/20260831_153212_revalidation_all.json",
+        "sha256": "bdf6c215a45c6243729fc660f96790b022398a35bafe1986f86573478412473d"
+      }
+    },
+    {
+      "modelo": "deepseek/deepseek-v4-flash-0731",
+      "sgbd": "postgresql",
+      "etapa1": {
+        "arquivo": "results/runs/20260831_153643_postgresql_all.json",
+        "sha256": "1038eb2fcf65b073448bfc198cd7c41998ec2b5338b9749d672055ef9e1e9dfe"
+      },
+      "etapa2": {
+        "arquivo": "results/runs/index_runs/20260831_155753_index_all.json",
+        "sha256": "cabe560002069c2b8da181856d70962130533798f22d097f879e8155ea803f5a"
+      },
+      "etapa3": {
+        "arquivo": "results/runs/revalidation_runs/20260831_160202_revalidation_all.json",
+        "sha256": "9d9fb242e9d1b74f7beed710c54b1f85568ea149ad3ab003942346044983baf7"
+      }
+    },
+    {
+      "modelo": "deepseek/deepseek-v4-flash-0731",
+      "sgbd": "mariadb",
+      "etapa1": {
+        "arquivo": "results/runs/20260831_163859_mariadb_all.json",
+        "sha256": "990b0b1e87a03ee2d2b463f5b28ede5619dfb7c09d7d57578adf5d2d3c638e36"
+      },
+      "etapa2": {
+        "arquivo": "results/runs/index_runs/20260831_165946_index_all.json",
+        "sha256": "a1f5b5211b616e2b9c950165c0c67ba3e119d62bf9b5a2038783fa4b1b68dc56"
+      },
+      "etapa3": {
+        "arquivo": "results/runs/revalidation_runs/20260831_170831_revalidation_all.json",
+        "sha256": "40e6e7070abc7264b7d6fad3ba82eb92e561448f363e5fb87594c3deb9f28a78"
+      }
+    }
+  ],
+  "subteste_rota": {
+    "descricao": "Claude Sonnet 5 reexecutado via OpenRouter (provedor anthropic) em três bancos, para comparar com a rota nativa.",
+    "arquivos": [
+      {
+        "arquivo": "results/runs/20260901_003151_sqlite_formula_1.json",
+        "sha256": "95bb4e1b92edcbfd0d11ca7bca3137f90e21d1ce5fd7621934a19b431199a43f"
+      },
+      {
+        "arquivo": "results/runs/20260901_003611_sqlite_toxicology.json",
+        "sha256": "d49dbad8e41b8c3104b7f63b8b01928888c7e3240edc03e3c940e59eb22a1244"
+      },
+      {
+        "arquivo": "results/runs/20260901_003816_sqlite_california_schools.json",
+        "sha256": "41db725062101f5140ae578bdcf8c7d1a6fadce02562cf8a77be4a7444977efd"
+      }
+    ]
+  }
+}
