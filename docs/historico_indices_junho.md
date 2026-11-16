@@ -1,6 +1,12 @@
-# Log do Benchmark de Índices
+# Histórico — primeiro ensaio de recomendação de índices (junho de 2026)
 
-> Registro das decisões, prompts utilizados e resultados obtidos no benchmark de sugestão de índices por LLMs.
+> **Documento histórico.** Registra o ensaio exploratório de 21/06/2026, feito
+> num único banco (`student_club`), só em SQLite, com modelos (Llama 3.3 70B e
+> Qwen 3 32B via Groq) que **não** fazem parte do experimento reportado no
+> artigo. Foi esse ensaio que originou a Etapa 2 do pipeline. O prompt de
+> índices evoluiu depois disso (parametrizado por dialeto); a versão usada no
+> experimento está em `src/text2sql_benchmark/prompt/index_prompt.py`, e os
+> resultados do experimento em `docs/resultados_matriz_completa.md`.
 
 ---
 

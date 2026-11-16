@@ -27,7 +27,7 @@
 
 Todos os modelos do OpenRouter rodaram com **raciocínio desabilitado**
 (`reasoning.effort = none`) — ver §6.1. O provedor que atendeu cada chamada é
-gravado por questão; a pinagem valeu em 100 % das 6.000 chamadas via OpenRouter.
+gravado por questão; a pinagem valeu em 100 % das 6.132 chamadas via OpenRouter das Etapas 1 e 2.
 
 ---
 
@@ -152,20 +152,28 @@ delas por esse motivo — apesar de o prompt avisar sobre a exigência.
 | DeepSeek V4 Flash | PostgreSQL | 1,71× | 1,62× |
 | DeepSeek V4 Flash | MariaDB | 1,59× | 1,37× |
 
-Reporta-se a **mediana**: a distribuição tem cauda longa (uma query saiu de
+Reporta-se a **mediana**: a distribuição tem cauda longa (uma consulta de
+referência do `codebase_community`, na Etapa 2 do Sonnet em SQLite, saiu de
 408 s para 2,1 ms) e a média seria dominada por outliers.
 
-### 3.3 Plano usa um dos índices criados (Etapa 3)
+A Etapa 3 mede as consultas que executaram na Etapa 1. Há três exceções:
+Luna × PostgreSQL (ids 48 e 426) e DeepSeek × PostgreSQL (id 295) executam na
+Etapa 1, mas não constam da Etapa 3. São as três questões reprocessadas em
+01/09/2026 (§5.7), depois de a Etapa 3 daquelas células já ter rodado.
+
+### 3.3 Planos que passam a usar índice (Etapa 3)
 
 | Modelo | SQLite | PostgreSQL | MariaDB |
 |---|---:|---:|---:|
 | Claude Sonnet 5 | 56 % | 32 % | 12 % |
-| Gemini 3.1 Flash Lite | 52 % | 30 % | 9 % |
+| Gemini 3.1 Flash Lite | 52 % | 29 % | 9 % |
 | Qwen 3.8 27B | 55 % | 32 % | 12 % |
 | GPT-5.6 Luna | 58 % | 34 % | 13 % |
 | DeepSeek V4 Flash | 60 % | 38 % | 11 % |
 
-Métrica deliberadamente restrita aos índices **novos**. O `uses_index` da
+Conta a **transição** de um plano sem índice para um plano com índice
+(`new_index_used`), não a adoção de um índice específico: uma consulta que já
+usava índice preexistente não é contada. O `uses_index` da
 Etapa 1 não serve para comparar SGBDs: cada parser conta índice preexistente de
 forma diferente e o InnoDB sempre tem a chave primária agrupada, o que
 inflaria o MariaDB artificialmente.
@@ -204,11 +212,12 @@ servidores, e sim entre **SQLite e o resto**.
 
 O GPT-5.6 Luna tem a terceira pior acurácia do lineup e o **maior speedup do
 projeto** (4,16× no SQLite). Já o Gemini, segundo em acurácia, tem o menor
-(2,58×). Corretude e eficiência são eixos independentes: índice bom não
-compensa SQL ruim, e SQL bom não garante ganho de índice.
+(2,58×). A ordem por ganho não acompanha a ordem por acurácia. Com cinco
+modelos isso é uma observação, não uma demonstração de independência entre os
+dois eixos.
 
 O uso de índice novo no plano é praticamente idêntico entre modelos e varia
-com o SGBD (SQLite ~55 %, PostgreSQL ~33 %, MariaDB ~11 %). Isso sugere que a
+com o SGBD (SQLite 52–60 %, PostgreSQL 29–38 %, MariaDB 9–13 %). Isso sugere que a
 diferença está no otimizador de cada SGBD, não em quem sugeriu os índices.
 
 ### 4.4 O que NÃO replicou: "queries incorretas ganham mais"
@@ -262,7 +271,8 @@ de dialeto trocado.
 A contaminação é mínima no SQLite (11 casos) e cresce nos servidores (31 e 38),
 o que é esperado: o SQLite é o dialeto de origem do dataset.
 
-`SUBTRACT` e `DIVIDE` merecem nota à parte — 16 ocorrências. Não existem em
+`SUBTRACT` e `DIVIDE` merecem nota à parte — 19 consultas, todas com
+`sql_error`. Não existem em
 SQL nenhum: vêm do vocabulário do próprio enunciado do BIRD, que descreve
 cálculos em prosa, e o modelo os reproduz como se fossem funções. É evidência
 de que a formulação do dataset influencia o SQL gerado.
@@ -417,16 +427,18 @@ situação real em vez de afirmar um controle que não existia.
 
 Os modelos do OpenRouter rodaram com `reasoning.effort = none`.
 
-**Motivo empírico**, medido no mesmo modelo, mesma questão e mesmo provedor,
-variando apenas o parâmetro:
+**Motivo empírico**, observado num ensaio preliminar com o mesmo modelo, a
+mesma questão e o mesmo provedor, variando apenas o parâmetro. O ensaio foi uma
+chamada avulsa e **não ficou gravado em arquivo**; por isso o artigo cita só a
+ordem de grandeza, não o fator:
 
 | DeepSeek V4 Flash | Saída | Latência |
 |---|---:|---:|
 | Com raciocínio (padrão) | 2.986 tokens | 25,9 s |
 | `reasoning.effort = none` | **46 tokens** | **2,0 s** |
 
-Fator **65×** em tokens de saída e 13× em latência, para produzir seis linhas
-de SQL equivalentes. A estimativa de custo da matriz caiu de US$ 50 para os
+Mais de uma ordem de grandeza em tokens de saída e em latência, para produzir
+seis linhas de SQL equivalentes. A estimativa de custo da matriz caiu de US$ 50 para os
 US$ 3,69 efetivamente gastos.
 
 **Justificativa metodológica:** a rodada nativa do Sonnet, que é a linha de
@@ -435,11 +447,20 @@ vir ligado por padrão — a saída observada ficou na ordem de uma centena de
 tokens, contra os milhares dos modelos que raciocinam. Desligar o raciocínio
 nos demais aproxima a condição da linha de base em vez de afastá-la.
 
+> **Correção de 15/11/2026.** A API da Anthropic **permite** desligar o
+> raciocínio do Claude Sonnet 5 (`thinking: {type: "disabled"}`) e ajustar o
+> esforço (`output_config.effort`). O conector não enviou nenhum dos dois
+> parâmetros, e a rodada correu no padrão do modelo, com raciocínio
+> adaptativo. A assimetria com os demais modelos é, portanto, uma escolha de
+> execução, não uma restrição da interface. Os blocos de raciocínio não foram
+> gravados, de modo que o volume efetivamente gasto em raciocínio por questão
+> não pode ser recuperado dos arquivos.
+
 > **Limitação desta comparação.** A Etapa 1 não registrava `output_tokens`
 > (corrigido em 01/09/2026, válido para rodadas futuras). O consumo do Sonnet
 > por questão vem de chamadas de amostra, não do total da rodada, e por isso
 > **não** se reporta aqui um fator Sonnet × DeepSeek: ele misturaria medições
-> de origens diferentes. O fator 65× acima é controlado e se sustenta.
+> de origens diferentes.
 
 **Limitação a declarar:** não se está medindo o teto de capacidade de cada
 modelo. Números comparados aos de leaderboards públicos aparecerão mais baixos.
@@ -468,7 +489,8 @@ experimento por provedores e quantizações diferentes. Todas as requisições
 levaram `provider: {only: [...], allow_fallbacks: false}`, e o provedor que
 atendeu foi gravado por questão para verificação posterior.
 
-Verificado: **6.000 de 6.000 chamadas** atendidas pelo provedor fixado.
+Verificado: **6.132 de 6.132 chamadas** das Etapas 1 e 2 atendidas pelo provedor fixado
+(`analise/saida/numeros_do_artigo.md`, §2).
 
 ### 6.4 Equivalência entre rotas de acesso — verificada
 
@@ -526,9 +548,9 @@ Os CSVs estão em `results/csv/<sgbd>/` por modelo e em
 
 ## 8. Em aberto
 
-- **Teste estatístico.** Removido a pedido em 01/09/2026; é decisão de escopo
-  com o orientador. Sem ele, diferenças entre modelos são descritivas: os três
-  do meio (Qwen 49,1 %, Luna 48,7 %, DeepSeek 46,9 %) devem ser tratados como
-  um grupo, sem afirmar ordem entre eles.
-- **`README.md` e `docs/arquitetura.md`** descrevem o lineup planejado, não o
-  executado.
+- **Teste estatístico.** A inclusão no texto é decisão com o orientador. O
+  cálculo (McNemar pareado) está em `analise/reproduzir.py`, §8 do relatório
+  `analise/saida/numeros_do_artigo.md`: 7 das 10 duplas de modelos diferem
+  significativamente, e Qwen, Luna e DeepSeek não se separam entre si. Até a
+  decisão, os três devem ser tratados como um grupo, sem afirmar ordem entre
+  eles.

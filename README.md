@@ -1,96 +1,154 @@
-# text2sql-benchmark
+# Avaliação de Modelos de Linguagem na Recomendação de Índices em Múltiplos SGBDs
 
-> Benchmark comparativo de Large Language Models na geração de consultas SQL para diferentes Sistemas de Gerenciamento de Banco de Dados
+*Evaluating Large Language Models for Index Recommendation across Multiple Database Management Systems*
 
----
-
-## Resumo
-
-Este projeto implementa um framework de benchmark para avaliar e comparar a capacidade de cinco Large Language Models (LLMs) na tarefa de Text-to-SQL, geração automática de consultas SQL a partir de perguntas em linguagem natural. A avaliação contempla três SGBDs (PostgreSQL, MariaDB e SQLite) e mede tanto a **corretude** das queries geradas (Execution Accuracy e Exact Match) quanto sua **eficiência** de execução (análise do plano de query e latência). Os resultados são consolidados em relatórios comparativos que subsidiam a análise do Trabalho de Conclusão de Curso.
+Código, dados e análise do Trabalho de Conclusão de Curso de Rafael Langsch
+Caheté Rêgo, Bacharelado em Sistemas de Informação, Universidade Federal
+Fluminense. Orientação: Prof. Daniel Cardoso Moraes de Oliveira.
 
 ---
 
-## Motivação e Contexto
+## O que este repositório contém
 
-### Por que Text-to-SQL importa
+Cinco modelos de linguagem recomendam índices para três SGBDs (SQLite 3,
+PostgreSQL 17 e MariaDB 11) sobre os 11 bancos de esquema real do
+[BIRD Mini-Dev](https://bird-bench.github.io/). A carga de trabalho sobre a qual
+os índices são avaliados é produzida pelo próprio modelo: cada um traduz para
+SQL as 500 perguntas em linguagem natural do conjunto (*text-to-SQL*).
 
-A capacidade de consultar bancos de dados relacionais em linguagem natural democratiza o acesso a dados corporativos: usuários sem conhecimento de SQL passam a obter respostas diretamente de bases estruturadas, sem depender de analistas ou desenvolvedores. Isso viabiliza ferramentas de BI conversacionais e assistentes de dados.
+O experimento roda em três etapas, para cada par (modelo, SGBD):
 
-### O problema da variabilidade
+| Etapa | O que acontece | O que mede |
+|---|---|---|
+| **1. Composição da carga** | O modelo traduz as 500 perguntas para SQL; a consulta gerada e a de referência são executadas | Acurácia de execução, *exact match*, latência, plano |
+| **2. Recomendação de índices** | O modelo recebe o esquema e as **consultas de referência** de cada banco e devolve `CREATE INDEX` | Índices aplicáveis; ganho sobre as consultas de referência |
+| **3. Efeito sobre a carga gerada** | Os índices da Etapa 2 são aplicados e as **consultas geradas na Etapa 1** são reexecutadas, sem nova chamada ao modelo | Ganho sobre a carga que o modelo produziu |
 
-LLMs diferentes têm exposição distinta a dialetos SQL durante o treinamento. O SQL do PostgreSQL não é o mesmo do SQLite, janelas temporais, funções de agregação, operadores de texto e comportamento de tipos variam entre SGBDs. Um modelo pode gerar SQL correto para PostgreSQL mas inválido ou subótimo para MariaDB. Essa variabilidade cruzada (modelo × SGBD) é o objeto central deste benchmark.
+Cinco modelos × três SGBDs = 15 combinações e 7.500 questões medidas.
 
-### Lacuna na literatura
+## Resultados principais
 
-A maioria dos benchmarks de Text-to-SQL consolidados (Spider, BIRD) avalia as queries em um único SGBD (tipicamente SQLite), usa apenas métricas de corretude e ignora a eficiência do plano de execução gerado. Este projeto preenche essa lacuna ao comparar sistematicamente múltiplos SGBDs e incluir métricas de eficiência baseadas em `EXPLAIN ANALYZE`.
+**Aplicabilidade e ganho dos índices.** Índices aplicados sobre recomendados e
+mediana do ganho (latência antes / depois) sobre a carga gerada:
 
----
+| Modelo | Acesso | Aplicáveis | Ganho SQLite | Ganho PostgreSQL | Ganho MariaDB |
+|---|---|---:|---:|---:|---:|
+| Claude Sonnet 5 | API nativa | 98,6% | 3,52× | 1,68× | 1,65× |
+| Gemini 3.1 Flash Lite | OpenRouter | 96,4% | 2,58× | 1,40× | 1,22× |
+| Qwen 3.8 27B | OpenRouter | 93,9% | 3,15× | 1,26× | 1,24× |
+| GPT-5.6 Luna | OpenRouter | 98,8% | 4,16× | 1,55× | 1,43× |
+| DeepSeek V4 Flash | OpenRouter | 90,4% | 3,16× | 1,62× | 1,37× |
 
-## Objetivos
+O ganho varia mais entre SGBDs do que entre modelos, e a ordem dos modelos por
+ganho não acompanha a ordem por acurácia.
 
-**Objetivo geral:** Implementar e executar um benchmark sistemático comparando LLMs na geração de SQL para múltiplos SGBDs, avaliando corretude e eficiência das queries produzidas.
-
-**Objetivos específicos:**
-
-
-- Definir e implementar as métricas de avaliação: Execution Accuracy, Exact Match, EXPLAIN ANALYZE e latência
-- Executar o benchmark sobre um dataset de perguntas em linguagem natural com queries de referência
-- Analisar estatisticamente os resultados e identificar padrões por modelo, por SGBD e por complexidade de query
-- Produzir relatórios comparativos e visualizações para subsidiar o TCC
-
----
-
-## Modelos Avaliados
-
-Lineup executado (01/09/2026), cinco modelos:
-
-| Modelo | Empresa | Tipo | Acesso |
-|---|---|---|---|
-| `claude-sonnet-5` | Anthropic | Proprietário | API nativa |
-| `google/gemini-3.1-flash-lite` | Google | Proprietário | OpenRouter |
-| `qwen/qwen3.8-27b` | Alibaba | Open-source | OpenRouter |
-| `openai/gpt-5.6-luna` | OpenAI | Proprietário | OpenRouter |
-| `deepseek/deepseek-v4-flash-0731` | DeepSeek | Open-source | OpenRouter |
-
-> **Nota sobre o acesso.** O escopo original previa Groq para os modelos
-> abertos, mas o plano pago ficou indisponível e os modelos usados em 06/2026
-> foram descontinuados. O projeto migrou para o **OpenRouter** como plataforma
-> única, o que também uniformiza o tratamento entre modelos.
->
-> O roteamento do OpenRouter troca de provedor entre requisições, e provedores
-> diferentes servem quantizações diferentes — por isso toda requisição fixa o
-> provedor upstream, e o provedor que atendeu é gravado em cada resultado. Ver
-> `docs/runbook_openrouter.md`.
-
-### Resultados
-
-**Execution Accuracy** — 500 questões por célula:
+**Acurácia de execução na Etapa 1** (500 questões por célula):
 
 | Modelo | SQLite | PostgreSQL | MariaDB |
 |---|---:|---:|---:|
-| Claude Sonnet 5 | 67,0 % | 58,6 % | 58,0 % |
-| Gemini 3.1 Flash Lite | 61,2 % | 55,4 % | 52,6 % |
-| Qwen 3.8 27B | 53,4 % | 47,4 % | 46,6 % |
-| GPT-5.6 Luna | 53,8 % | 46,4 % | 46,0 % |
-| DeepSeek V4 Flash | 52,4 % | 43,8 % | 44,4 % |
+| Claude Sonnet 5 | 67,0% | 58,6% | 58,0% |
+| Gemini 3.1 Flash Lite | 61,2% | 55,4% | 52,6% |
+| Qwen 3.8 27B | 53,4% | 47,4% | 46,6% |
+| GPT-5.6 Luna | 53,8% | 46,4% | 46,0% |
+| DeepSeek V4 Flash | 52,4% | 43,8% | 44,4% |
 
-O SQLite fica acima dos dois servidores **nos cinco modelos**, com vantagem de
-6,4 a 8,7 pontos. Como Spider e BIRD avaliam em SQLite, a acurácia que esses
-benchmarks reportam superestima o desempenho em bancos de produção.
+Nos cinco modelos, a acurácia em SQLite supera a média dos outros dois sistemas
+(vantagem de 6,4 a 8,7 pontos percentuais).
 
-Matriz completa, achados e defeitos corrigidos:
-**`docs/resultados_matriz_completa.md`**.
+Detalhamento, achados e defeitos corrigidos: [`docs/resultados_matriz_completa.md`](docs/resultados_matriz_completa.md).
 
----
+## Conferência dos números do artigo
 
-## SGBDs Avaliados
+Todo número citado no artigo pode ser recalculado a partir dos arquivos de
+resultado, sem chamada a API e sem banco de dados:
 
-| SGBD       | Versão | Licença         | Destaque para o benchmark                                                  |
-|------------|--------|-----------------|---------------------------------------------------------------------------|
-| PostgreSQL | 17     | BSD             | SQL mais rico: CTEs, window functions, JSONB, `ILIKE`, `EXPLAIN ANALYZE` completo |
-| MariaDB    | 11.x   | GPL             | Fork do MySQL com divergências em tipos, funções e otimizador             |
-| SQLite     | 3.x    | Domínio público | Sem servidor; `EXPLAIN QUERY PLAN` com saída diferente; tipagem flexível  |
+```bash
+.venv/bin/python analise/reproduzir.py
+```
 
-> **Nota sobre EXPLAIN:** PostgreSQL e MariaDB expõem `EXPLAIN ANALYZE` com custo estimado e real. SQLite expõe apenas `EXPLAIN QUERY PLAN` com informação de acesso (índice ou varredura). A implementação trata cada SGBD de forma diferenciada na coleta de métricas de eficiência.
+O script confere o SHA-256 de cada arquivo usado, recalcula cada afirmação e
+gera [`analise/saida/numeros_do_artigo.md`](analise/saida/numeros_do_artigo.md),
+com o valor do artigo, o valor dos dados e se coincidem. Ver
+[`analise/README.md`](analise/README.md).
 
----
+## Disponibilidade dos dados
+
+| Conteúdo | Onde |
+|---|---|
+| Tabelas agregadas e uma linha por questão (CSV) | [`analise/saida/csv/`](analise/saida/csv/), neste repositório |
+| Arquivos brutos de todas as rodadas (JSON: prompt exato, SQL gerado, resposta íntegra do modelo na Etapa 2, plano de execução, provedor que atendeu) | Pacote `resultados.tar.gz` anexado à release `v1.0-tcc` deste repositório *(DOI Zenodo: a preencher)* |
+| Dataset BIRD Mini-Dev | Não redistribuído; obter na fonte original com `download_dataset.py` |
+
+## Como reproduzir o experimento
+
+Requer Python 3.11+, [`uv`](https://docs.astral.sh/uv/) e Docker.
+
+```bash
+uv venv && uv pip install -e ".[dev]"
+cp .env.example .env                      # chaves de API e credenciais dos bancos
+.venv/bin/python download_dataset.py      # BIRD Mini-Dev
+docker compose up -d                      # PostgreSQL 17 e MariaDB 11
+./scripts/setup_databases.sh <pasta do minidev>
+
+# as três etapas de uma combinação (modelo, SGBD)
+.venv/bin/python cli.py pipeline --model <modelo> --sgbd sqlite|postgresql|mariadb
+```
+
+O acesso via OpenRouter exige provedor fixado; o passo a passo, a pinagem usada
+e os custos estão em [`docs/runbook_openrouter.md`](docs/runbook_openrouter.md).
+Os testes rodam com `.venv/bin/python -m pytest -q`.
+
+As respostas dos modelos não são determinísticas (ver Limitações): uma
+reexecução produz números próximos, não idênticos. A conferência exata é a
+feita sobre os arquivos de resultado, acima.
+
+## Configuração dos modelos
+
+| Modelo | Rota | Provedor fixado | Raciocínio |
+|---|---|---|---|
+| Claude Sonnet 5 | API nativa da Anthropic | — | padrão do modelo (adaptativo) |
+| Gemini 3.1 Flash Lite | OpenRouter | google-ai-studio | desabilitado |
+| Qwen 3.8 27B | OpenRouter | chutes (fp8) | desabilitado |
+| GPT-5.6 Luna | OpenRouter | openai | desabilitado |
+| DeepSeek V4 Flash | OpenRouter | novita (fp8) | desabilitado |
+
+Nenhum modelo recebeu parâmetro de temperatura. O provedor que atendeu é
+gravado em cada chamada; nas Etapas 1 e 2, todas as chamadas via OpenRouter
+foram atendidas pelo provedor fixado.
+
+## Limitações
+
+- As respostas não são determinísticas: não há configuração de temperatura
+  comum aos provedores.
+- O Claude Sonnet 5 rodou com o raciocínio adaptativo padrão, enquanto os
+  demais rodaram com raciocínio desabilitado. A API da Anthropic permitiria
+  desligá-lo; isso não foi feito na rodada.
+- A recomendação é emitida numa única interação, sem orçamento de
+  armazenamento e sem refinamento iterativo. Não se mede o teto de capacidade
+  de nenhum modelo.
+- A Execution Accuracy segue o critério do BIRD: compara conjuntos de linhas,
+  ignorando ordem e duplicatas.
+
+## Estrutura
+
+```
+analise/        conferência dos números do artigo (manifesto, script, relatório, CSVs)
+cli.py          comandos: run, index, revalidate, pipeline, compare, smoke
+docs/           arquitetura, resultados detalhados, runbook do OpenRouter
+src/text2sql_benchmark/
+  dataset/      leitura do BIRD
+  prompt/       prompts de text-to-SQL e de recomendação de índices
+  llm/          conectores (Anthropic, OpenRouter e outros)
+  db/           conectores SQLite, PostgreSQL e MariaDB; isolamento dos índices
+  metrics/      execution accuracy, exact match, parsers de plano, latência
+  runner/       Etapas 1, 2 e 3
+  report/       relatórios por modelo e comparativo
+tests/          testes unitários
+```
+
+Decisões de projeto: [`docs/arquitetura.md`](docs/arquitetura.md).
+
+## Referência do conjunto de dados
+
+Li, J. et al. *Can LLM Already Serve as A Database Interface? A BIg Bench for
+Large-Scale Database Grounded Text-to-SQLs.* NeurIPS 2023.

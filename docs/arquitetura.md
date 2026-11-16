@@ -74,28 +74,29 @@ Sem esse conhecimento, a pergunta é ambígua. O BIRD reflete melhor cenários d
 
 O BIRD Mini-Dev é um subconjunto compacto do BIRD pensado para ciclos rápidos de desenvolvimento:
 
-- **780 instâncias** (500 do dataset original + 270 novas, incluindo operações CRUD e JSON)
+- **500 consultas de leitura** selecionadas do conjunto de desenvolvimento original
 - **11 bancos de dados** temáticos (Financial, European Football, Formula 1, etc.)
-- Distribuição controlada: 30% simples, 50% moderada, 20% desafiadora
-- Scripts de avaliação já implementados no repositório oficial
-- Versões nativas para **SQLite, MySQL e PostgreSQL**
+- Dificuldade estratificada: 148 simples, 250 moderadas, 102 desafiadoras
+- Versões nativas para **SQLite, MySQL e PostgreSQL**, com as consultas de referência traduzidas para cada dialeto
 
-Para o contexto de um TCC — onde o custo de chamadas de API é real e o tempo de execução do benchmark impacta o cronograma — 780 instâncias × 5 modelos × 3 SGBDs é um volume gerenciável (≈11.700 execuções de query) sem sacrificar representatividade estatística.
+O pacote Mini-Dev também distribui 270 instâncias adicionais com operações CRUD e JSON. **Elas não foram usadas**: o trabalho emprega apenas as 500 consultas de leitura, carregadas pelo `download_dataset.py` a partir dos splits `mini_dev_sqlite`, `mini_dev_mysql` e `mini_dev_pg` do conjunto `birdsql/bird_mini_dev`.
+
+500 questões × 5 modelos × 3 SGBDs = **7.500 medições** na Etapa 1, volume viável para o orçamento de API de um TCC.
 
 ### 2.4 Adaptações necessárias em relação ao BIRD original
 
 | O que o BIRD faz | Nossa adaptação |
 |---|---|
 | Suporta SQLite, MySQL, PostgreSQL | Substituímos MySQL por **MariaDB** |
-| Usa apenas APIs OpenAI/Azure | Adicionamos Anthropic, Google AI, Groq |
-| Métrica R-VES (tempo de inferência LLM) | Substituímos por **EXPLAIN ANALYZE** |
-| Avaliação offline em script único | Pipeline modular com storage de resultados |
+| Usa apenas APIs OpenAI/Azure | API nativa da Anthropic e OpenRouter (com provedor fixado) |
+| Métrica R-VES (razão de tempos gerada/referência) | Ganho de latência **antes e depois dos índices recomendados**, mais o plano de execução |
+| Avaliação offline em script único | Pipeline modular de três etapas com storage de resultados |
 
 **Por que MariaDB em vez de MySQL?**
 MariaDB é um fork do MySQL com divergências crescentes no otimizador, em funções nativas e em tipos de dados. Do ponto de vista acadêmico, incluir MariaDB em vez de MySQL introduz uma comparação mais rica: dois SGBDs com SQL superficialmente similar mas comportamentos distintos. Operacionalmente, MariaDB é equivalente ao MySQL para fins de carga do dataset BIRD.
 
-**Por que EXPLAIN ANALYZE em vez de R-VES?**
-O R-VES do BIRD mede a razão entre o tempo de execução da query gerada e o tempo da query de referência. Esse número é sensível à variabilidade de hardware, carga do servidor e latência de rede — fatores externos ao modelo avaliado. O EXPLAIN ANALYZE, por outro lado, expõe o **plano de execução** determinístico do otimizador do SGBD: tipo de scan (sequential vs. index), custo estimado, número real de linhas processadas. Isso permite comparar a qualidade da query gerada de forma independente do ambiente de execução.
+**Por que não o R-VES?**
+O R-VES do BIRD compara o tempo da consulta gerada com o da consulta de referência, ambos no mesmo banco. Este trabalho faz outra pergunta — se os **índices recomendados pelo modelo** aceleram a carga — e por isso compara a mesma consulta **antes e depois** da aplicação dos índices, no mesmo ambiente e na mesma sessão de medição. A razão antes/depois cancela boa parte da variação de hardware que afeta comparações absolutas de tempo. O plano de execução é coletado junto, em cada SGBD pelo comando que ele oferece (§3.2), para verificar se o otimizador passou a usar índice.
 
 ---
 
@@ -253,7 +254,7 @@ Cada SGBD tem particularidades importantes:
 | SGBD | Driver | EXPLAIN | Observação |
 |---|---|---|---|
 | PostgreSQL | `psycopg2` | `EXPLAIN (ANALYZE, FORMAT TEXT)` | Expõe custo real e estimado |
-| MariaDB | `PyMySQL` | `EXPLAIN ANALYZE` | Sintaxe similar ao PostgreSQL desde MariaDB 10.9 |
+| MariaDB | `PyMySQL` | `ANALYZE FORMAT=JSON` | O MariaDB não implementa `EXPLAIN ANALYZE` (sintaxe do MySQL 8); a forma equivalente executa a consulta e devolve a árvore JSON do plano |
 | SQLite | `sqlite3` (stdlib) | `EXPLAIN QUERY PLAN` | Sem custo numérico, apenas tipo de acesso |
 
 ---
@@ -264,18 +265,18 @@ Cada SGBD tem particularidades importantes:
 
 ```python
 def execution_accuracy(predicted: list[tuple], gold: list[tuple]) -> bool:
-    return set(predicted) == set(gold)
+    return {_hashavel(l) for l in predicted} == {_hashavel(l) for l in gold}
 ```
 
-Compara os conjuntos de resultados ignorando a ordem das linhas. Uma query que retorna as mesmas linhas em ordem diferente é considerada correta.
+Compara os **conjuntos** de linhas resultantes, como faz a avaliação oficial do BIRD. Duas consequências, ambas herdadas do BIRD: a ordem das linhas é ignorada, e linhas duplicadas também (um resultado com uma linha repetida duas vezes equivale ao mesmo resultado sem a repetição). `_hashavel` converte arrays e JSON devolvidos pelo PostgreSQL em tipos comparáveis.
 
 **Exact Match (EM)**
 
-Normaliza as strings SQL (lowercase, whitespace, aspas) e compara diretamente. É uma métrica mais restritiva que EX — útil para medir se o modelo gera SQL idiomático próximo ao gabarito, não apenas equivalente em resultado.
+Normaliza caixa, espaços, aspas e o ponto-e-vírgula final, e compara as strings. Não normaliza aliases, ordem de cláusulas nem parênteses redundantes: essas são escolhas de escrita, e distingui-las é o propósito da métrica.
 
-**EXPLAIN ANALYZE**
+**Plano de execução**
 
-Cada SGBD tem um parser dedicado que extrai do texto bruto do EXPLAIN:
+Cada SGBD tem um parser dedicado que extrai do texto bruto do plano:
 
 ```python
 @dataclass
@@ -287,11 +288,11 @@ class ExplainResult:
     raw: str
 ```
 
-A diferença entre `scan_type` da query gerada vs. da query gold é a métrica de eficiência central do projeto.
+Nas Etapas 2 e 3, o campo `new_index_used` marca a **transição** de um plano que não usava índice para um que passa a usar (`depois.uses_index and not antes.uses_index`). Não identifica qual índice foi usado: uma consulta que já usava índice preexistente não é contada.
 
-**Latência**
+**Latência e ganho**
 
-Medida com `time.perf_counter()` ao redor da execução da query no banco — não inclui o tempo de inferência do LLM.
+A latência é medida com `time.perf_counter()` ao redor da execução da consulta no banco, sem incluir o tempo de inferência do LLM. A métrica de eficiência central é o **ganho** (speedup) de cada consulta, `latência antes / latência depois` da aplicação dos índices recomendados, reportado pela **mediana** por combinação (modelo, SGBD): a distribuição tem cauda longa e a média seria dominada por poucos casos extremos.
 
 ---
 
@@ -445,20 +446,13 @@ pinagem. Ver `docs/runbook_openrouter.md`.
 
 ---
 
-## 6. Próximos Passos de Implementação
+## 6. Estado
 
-Atualizado em 31/08/2026.
+A matriz completa — cinco modelos × três SGBDs × três etapas — foi executada
+entre 30/08 e 01/09/2026. Os resultados estão em
+`docs/resultados_matriz_completa.md`, e cada número citado no artigo pode ser
+recalculado a partir dos arquivos de resultado com
+`analise/reproduzir.py` (ver `analise/README.md`).
 
-| Prioridade | Tarefa | Situação |
-|---|---|---|
-| Alta | `get_schema()` para PostgreSQL e MariaDB via `information_schema` | ✅ feito |
-| Alta | Script de carga dos dados BIRD nos SGBDs (`scripts/setup_databases.sh`) | ✅ feito |
-| Alta | Download e organização do dataset BIRD Mini-Dev | ✅ feito |
-| Média | Extração de SQL de respostas com markdown (`llm/sql_extract.py`) | ✅ feito |
-| Média | Exportação CSV | ✅ feito (`results/csv/`) |
-| Baixa | Migração do conector Google para `google.genai` | ✅ feito |
-| Alta | Relatório comparativo entre modelos | ✅ feito (`cli.py compare`) |
-| — | Teste estatístico | removido a pedido; decisão de escopo com o orientador |
-| Média | Rodar os 5 modelos do OpenRouter nas três etapas × três SGBDs | pendente (crédito) |
-| Média | Paralelização de chamadas LLM | pendente |
-| Baixa | Gráficos de visualização (matplotlib/plotly) | pendente |
+Itens deliberadamente fora do escopo: paralelização das chamadas ao LLM e
+gráficos de visualização.
