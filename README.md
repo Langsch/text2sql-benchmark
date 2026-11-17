@@ -198,8 +198,6 @@ sustenta afirmações do artigo:
   A rodada do artigo usou só a API da Anthropic e o OpenRouter.
 - **Opção de rodar sem *evidence*** (`BIRD_USE_EVIDENCE=false`). Todas as rodadas
   do artigo incluíram o conhecimento de domínio.
-- **Primeiro ensaio de recomendação de índices**, de junho de 2026, com outros
-  modelos: [`docs/historico_indices_junho.md`](docs/historico_indices_junho.md).
 
 </details>
 
