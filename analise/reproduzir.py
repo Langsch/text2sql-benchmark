@@ -356,8 +356,10 @@ def secao_ganho(rel, celulas, ex):
     # Ordem por ganho × ordem por acurácia, no SQLite
     rank_ex = sorted(NOME, key=lambda m: -ex[(m, "sqlite")])
     maior_ganho = max(NOME, key=lambda m: cel(celulas, m, "sqlite")["idx"].med_gerado)
-    rel.confere("5", "Posição em acurácia (SQLite) do modelo de maior ganho", "3ª",
-                f"{rank_ex.index(maior_ganho) + 1}ª")
+    trio = {"qwen/qwen3.8-27b", "openai/gpt-5.6-luna", "deepseek/deepseek-v4-flash-0731"}
+    rel.confere("5", "Modelo de maior ganho está no grupo de menor acurácia "
+                "(Qwen, Luna, DeepSeek; ver §8)", "sim",
+                "sim" if maior_ganho in trio else "não")
     seg = rank_ex[1]
     menor_sq = min(NOME, key=lambda m: cel(celulas, m, "sqlite")["idx"].med_gerado)
     rel.confere("5", "O 2º em acurácia tem o menor ganho em SQLite", "sim",
@@ -522,8 +524,32 @@ def _potencia(p: float) -> str:
     return f"{mant} × 10{str(int(expo)).translate(_SOBRESCRITO)}"
 
 
+def _p_artigo(p: float) -> str:
+    """Valor de p como na tabela do artigo: 1,9 × 10⁻⁶ ou 0,002."""
+    if p >= 0.001:
+        return num(p, 3)
+    mant, expo = f"{p:.1e}".split("e")
+    return f"{mant.replace('.', ',')} × 10{str(int(expo)).translate(_SOBRESCRITO)}"
+
+
+# Tabela "SQLite contra cada servidor" do artigo: só SQLite acerta / só servidor
+# acerta / p (qui-quadrado com correção de continuidade).
+TABELA_MCNEMAR_ARTIGO = {
+    ("claude-sonnet-5", "postgresql"): "58 / 16 / 1,9 × 10⁻⁶",
+    ("claude-sonnet-5", "mariadb"): "64 / 19 / 1,4 × 10⁻⁶",
+    ("google/gemini-3.1-flash-lite", "postgresql"): "56 / 27 / 0,002",
+    ("google/gemini-3.1-flash-lite", "mariadb"): "67 / 24 / 1,1 × 10⁻⁵",
+    ("qwen/qwen3.8-27b", "postgresql"): "71 / 41 / 0,006",
+    ("qwen/qwen3.8-27b", "mariadb"): "69 / 35 / 0,001",
+    ("openai/gpt-5.6-luna", "postgresql"): "59 / 22 / 6,3 × 10⁻⁵",
+    ("openai/gpt-5.6-luna", "mariadb"): "65 / 26 / 6,8 × 10⁻⁵",
+    ("deepseek/deepseek-v4-flash-0731", "postgresql"): "75 / 32 / 4,9 × 10⁻⁵",
+    ("deepseek/deepseek-v4-flash-0731", "mariadb"): "71 / 31 / 1,1 × 10⁻⁴",
+}
+
+
 def secao_mcnemar(rel, celulas):
-    rel.h(2, "8. Teste de McNemar (bloco [[PROFESSOR]] do artigo)")
+    rel.h(2, "8. Teste de McNemar")
     rel.p("Pareamento por (SGBD, questão): cada dupla de modelos é comparada nas "
           "1.500 respostas que ambos deram às mesmas questões nos mesmos SGBDs. "
           "Só as discordâncias entram no teste. Correção de Bonferroni para dez "
@@ -555,6 +581,8 @@ def secao_mcnemar(rel, celulas):
     nao_sig = {frozenset((r[0], r[1])) for r in resultados if r[4] >= 0.05}
     rel.confere("8", "As não significativas são exatamente as do trio Qwen, Luna, DeepSeek",
                 "sim", "sim" if nao_sig == {frozenset(p) for p in combinations(meio, 2)} else "não")
+    rel.confere("8", "As sete duplas significativas têm p < 10⁻⁴", "sim",
+                "sim" if all(r[4] < 1e-4 for r in resultados if r[4] < 0.005) else "não")
     mais_prox = max(resultados, key=lambda r: r[4])
     rel.confere("8", "Par mais próximo: discordâncias", "180 e 174",
                 f"{max(mais_prox[2], mais_prox[3])} e {min(mais_prox[2], mais_prox[3])}")
@@ -593,6 +621,9 @@ def secao_mcnemar(rel, celulas):
                 c += y and not x
             _, p = _chi2_cc(b, c)
             maior_p = max(maior_p, p)
+            esperado = TABELA_MCNEMAR_ARTIGO[(m, s)]
+            rel.confere("8", f"Tabela do artigo: {NOME[m]} × {ROTULO[s]}",
+                        esperado, f"{b} / {c} / {_p_artigo(p)}")
             linhas.append([NOME[m], ROTULO[s], str(b), str(c), _fmt_p(p), _fmt_p(_exato(b, c))])
     rel.tabela(["Modelo", "Servidor", "só SQLite acerta", "só servidor acerta",
                 "p (χ², corr.)", "p (exato)"], linhas)
@@ -756,6 +787,44 @@ def secao_cobertura(rel, celulas):
     rel.bloco_afirmacoes("9")
 
 
+# ------------------------------------------------- raciocínio na Etapa 2
+
+def secao_raciocinio(rel, celulas):
+    rel.h(2, "10. Raciocínio efetivamente usado na Etapa 2")
+    rel.p("A Etapa 2 grava, por chamada, os tokens de entrada e de saída cobrados "
+          "e a resposta visível. Tokens de saída acima do tamanho da resposta são "
+          "raciocínio interno. O tamanho da resposta em tokens é estimado com a "
+          "razão caracteres/token do próprio modelo, medida no prompt da mesma "
+          "chamada (caracteres do prompt ÷ tokens de entrada cobrados).")
+    rel.p()
+    linhas, visiveis, excede = [], {}, []
+    medianas = {}
+    for c in celulas:
+        cpt = (sum(len(r["index_prompt"]) for r in c["e2"])
+               / sum(r["index_prompt_tokens"] for r in c["e2"]))
+        saida = [r["index_output_tokens"] for r in c["e2"]]
+        vis = [len(r["raw_llm_response"]) / cpt for r in c["e2"]]
+        razao = sum(saida) / sum(vis)
+        linhas.append([NOME[c["modelo"]], ROTULO[c["sgbd"]], num(cpt, 2),
+                       str(round(median(saida))), str(round(median(vis))), num(razao, 2)])
+        if c["modelo"] == "claude-sonnet-5":
+            medianas[c["sgbd"]] = round(median(saida))
+            visiveis[c["sgbd"]] = median(vis)
+        else:
+            excede.append(razao > 1)
+    rel.tabela(["Modelo", "SGBD", "caracteres/token", "tokens de saída (mediana)",
+                "resposta visível, tokens (mediana)", "saída ÷ visível"], linhas)
+    rel.confere("10", "Sonnet: mediana de tokens de saída por chamada (SQLite / "
+                "PostgreSQL / MariaDB)", "1.549 / 3.506 / 3.580",
+                " / ".join(f"{medianas[s]:,}".replace(",", ".") for s in SGBDS))
+    rel.confere("10", "Sonnet: resposta visível estimada (mediana), cerca de 900 a 1.000 tokens",
+                "sim", "sim" if all(850 <= v <= 1000 for v in visiveis.values()) else
+                " / ".join(str(round(v)) for v in visiveis.values()))
+    rel.confere("10", "Demais modelos: tokens cobrados não excedem a resposta visível "
+                "(12 células)", "sim", "sim" if not any(excede) else "não")
+    rel.bloco_afirmacoes("10")
+
+
 # -------------------------------------------------------------- CSVs
 
 def exportar_csv(celulas, ex):
@@ -816,6 +885,7 @@ def main() -> int:
     secao_rota(rel, celulas, rota)
     secao_mcnemar(rel, celulas)
     secao_cobertura(rel, celulas)
+    secao_raciocinio(rel, celulas)
 
     ok = sum(a.ok for a in rel.afirmacoes)
     resumo = [

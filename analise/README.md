@@ -45,6 +45,7 @@ célula são as que de fato se encadearam.
 | 7 | Equivalência entre a rota nativa e o OpenRouter |
 | 8 | Teste de McNemar entre modelos e entre SGBDs |
 | 9 | Cobertura das colunas de predicado pelos índices, em dois critérios |
+| 10 | Raciocínio efetivamente usado na Etapa 2 (tokens cobrados × resposta visível) |
 
 ## O que não está aqui
 

@@ -5,7 +5,7 @@
 ## Resumo
 
 - Arquivos íntegros: **sim**
-- Afirmações conferidas: **111 de 111** coincidem com os dados
+- Afirmações conferidas: **125 de 125** coincidem com os dados
 
 ## 1. Integridade dos arquivos
 
@@ -235,7 +235,7 @@ Caso extremo: Etapa 2, Claude Sonnet 5 × SQLite, banco `codebase_community` (co
 | Faixa da mediana E3 em SQLite | 2,58 a 4,16 | 2,58 a 4,16 | ✓ |
 | Faixa da mediana E3 em PostgreSQL e MariaDB | 1,22 a 1,68 | 1,22 a 1,68 | ✓ |
 | Todas as medianas acima de 1 (todos reduzem o tempo) | 15 de 15 | 15 de 15 | ✓ |
-| Posição em acurácia (SQLite) do modelo de maior ganho | 3ª | 3ª | ✓ |
+| Modelo de maior ganho está no grupo de menor acurácia (Qwen, Luna, DeepSeek; ver §8) | sim | sim | ✓ |
 | O 2º em acurácia tem o menor ganho em SQLite | sim | sim | ✓ |
 | Planos que passam a usar índice — SQLite | 52% a 60% | 52% a 60% | ✓ |
 | Planos que passam a usar índice — PostgreSQL | 29% a 38% | 29% a 38% | ✓ |
@@ -281,7 +281,7 @@ Cada construção só é contada no SGBD em que é inválida: `strftime` em Post
 | Divergências (favorecem nativa / alternativa) | 5 / 4 | 5 / 4 | ✓ |
 
 
-## 8. Teste de McNemar (bloco [[PROFESSOR]] do artigo)
+## 8. Teste de McNemar
 
 Pareamento por (SGBD, questão): cada dupla de modelos é comparada nas 1.500 respostas que ambos deram às mesmas questões nos mesmos SGBDs. Só as discordâncias entram no teste. Correção de Bonferroni para dez comparações: α = 0,005.
 
@@ -321,9 +321,20 @@ Pelo teste separado, o maior p é 0,006: todas as dez comparações ficam abaixo
 |---|---|---|---|
 | Duplas significativas | 7 de 10 | 7 de 10 | ✓ |
 | As não significativas são exatamente as do trio Qwen, Luna, DeepSeek | sim | sim | ✓ |
+| As sete duplas significativas têm p < 10⁻⁴ | sim | sim | ✓ |
 | Par mais próximo: discordâncias | 180 e 174 | 180 e 174 | ✓ |
 | Par mais próximo: p | 0,79 | 0,79 | ✓ |
 | Comparações na zona intermediária (0,005 ≤ p < 0,05) | 0 | 0 | ✓ |
+| Tabela do artigo: Claude Sonnet 5 × PostgreSQL | 58 / 16 / 1,9 × 10⁻⁶ | 58 / 16 / 1,9 × 10⁻⁶ | ✓ |
+| Tabela do artigo: Claude Sonnet 5 × MariaDB | 64 / 19 / 1,4 × 10⁻⁶ | 64 / 19 / 1,4 × 10⁻⁶ | ✓ |
+| Tabela do artigo: Gemini 3.1 Flash Lite × PostgreSQL | 56 / 27 / 0,002 | 56 / 27 / 0,002 | ✓ |
+| Tabela do artigo: Gemini 3.1 Flash Lite × MariaDB | 67 / 24 / 1,1 × 10⁻⁵ | 67 / 24 / 1,1 × 10⁻⁵ | ✓ |
+| Tabela do artigo: Qwen 3.8 27B × PostgreSQL | 71 / 41 / 0,006 | 71 / 41 / 0,006 | ✓ |
+| Tabela do artigo: Qwen 3.8 27B × MariaDB | 69 / 35 / 0,001 | 69 / 35 / 0,001 | ✓ |
+| Tabela do artigo: GPT-5.6 Luna × PostgreSQL | 59 / 22 / 6,3 × 10⁻⁵ | 59 / 22 / 6,3 × 10⁻⁵ | ✓ |
+| Tabela do artigo: GPT-5.6 Luna × MariaDB | 65 / 26 / 6,8 × 10⁻⁵ | 65 / 26 / 6,8 × 10⁻⁵ | ✓ |
+| Tabela do artigo: DeepSeek V4 Flash × PostgreSQL | 75 / 32 / 4,9 × 10⁻⁵ | 75 / 32 / 4,9 × 10⁻⁵ | ✓ |
+| Tabela do artigo: DeepSeek V4 Flash × MariaDB | 71 / 31 / 1,1 × 10⁻⁴ | 71 / 31 / 1,1 × 10⁻⁴ | ✓ |
 | SQLite × servidor: testes abaixo de 0,05 | 10 de 10 | 10 de 10 | ✓ |
 | SQLite × servidor: significativos após Bonferroni | 9 de 10 | 9 de 10 | ✓ |
 | Único que não permanece após Bonferroni | Qwen 3.8 27B × PostgreSQL | Qwen 3.8 27B × PostgreSQL | ✓ |
@@ -375,4 +386,33 @@ Pelo critério regex as geradas ficam mais cobertas em 5 de 5 modelos; pelo sqlg
 | Critério sqlglot: modelos em que as geradas ficam menos cobertas | 5 de 5 | 5 de 5 | ✓ |
 | Critério sqlglot: desvantagem das geradas (p.p.) | 1,1 a 6,1 | 1,1 a 6,1 | ✓ |
 | Critérios em que a ordem dos modelos acompanha a vantagem de ganho | nenhum | nenhum | ✓ |
+
+
+## 10. Raciocínio efetivamente usado na Etapa 2
+
+A Etapa 2 grava, por chamada, os tokens de entrada e de saída cobrados e a resposta visível. Tokens de saída acima do tamanho da resposta são raciocínio interno. O tamanho da resposta em tokens é estimado com a razão caracteres/token do próprio modelo, medida no prompt da mesma chamada (caracteres do prompt ÷ tokens de entrada cobrados).
+
+| Modelo | SGBD | caracteres/token | tokens de saída (mediana) | resposta visível, tokens (mediana) | saída ÷ visível |
+|---|---|---|---|---|---|
+| Claude Sonnet 5 | SQLite | 1,88 | 1549 | 936 | 2,25 |
+| Claude Sonnet 5 | PostgreSQL | 1,73 | 3506 | 977 | 3,61 |
+| Claude Sonnet 5 | MariaDB | 1,70 | 3580 | 891 | 3,62 |
+| Gemini 3.1 Flash Lite | SQLite | 3,03 | 414 | 471 | 0,87 |
+| Gemini 3.1 Flash Lite | PostgreSQL | 2,80 | 444 | 551 | 0,80 |
+| Gemini 3.1 Flash Lite | MariaDB | 2,81 | 401 | 445 | 0,86 |
+| Qwen 3.8 27B | SQLite | 3,26 | 414 | 570 | 0,80 |
+| Qwen 3.8 27B | PostgreSQL | 3,01 | 381 | 528 | 0,81 |
+| Qwen 3.8 27B | MariaDB | 2,99 | 399 | 520 | 0,75 |
+| GPT-5.6 Luna | SQLite | 3,47 | 425 | 568 | 0,79 |
+| GPT-5.6 Luna | PostgreSQL | 3,20 | 447 | 671 | 0,71 |
+| GPT-5.6 Luna | MariaDB | 3,25 | 533 | 614 | 0,76 |
+| DeepSeek V4 Flash | SQLite | 3,28 | 601 | 755 | 0,81 |
+| DeepSeek V4 Flash | PostgreSQL | 3,04 | 601 | 806 | 0,74 |
+| DeepSeek V4 Flash | MariaDB | 3,09 | 621 | 791 | 0,79 |
+
+| Afirmação do artigo | Artigo | Dados |  |
+|---|---|---|---|
+| Sonnet: mediana de tokens de saída por chamada (SQLite / PostgreSQL / MariaDB) | 1.549 / 3.506 / 3.580 | 1.549 / 3.506 / 3.580 | ✓ |
+| Sonnet: resposta visível estimada (mediana), cerca de 900 a 1.000 tokens | sim | sim | ✓ |
+| Demais modelos: tokens cobrados não excedem a resposta visível (12 células) | sim | sim | ✓ |
 
