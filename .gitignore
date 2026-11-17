@@ -209,3 +209,7 @@ __marimo__/
 # Dataset e resultados do benchmark (gerados localmente, não versionados)
 data/
 results/
+
+# Pacote de resultados baixado da release (ver README)
+resultados.tar.gz
+resultados.sha256

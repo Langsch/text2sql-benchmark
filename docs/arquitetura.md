@@ -1,6 +1,6 @@
 # Arquitetura e Decisões de Projeto — text2sql-benchmark
 
-> Documento técnico complementar ao README. Registra as decisões de design, a justificativa do dataset escolhido e a arquitetura do framework implementado. Destinado a subsidiar a escrita do TCC e orientar futuras contribuições ao projeto.
+> Documento técnico complementar ao README. Registra as decisões de design, a justificativa do dataset escolhido e a arquitetura do framework implementado. O código faz algumas coisas além do que o artigo usa (por exemplo, a opção de rodar sem *evidence* e conectores de provedores que não entraram na rodada final); quando isso acontece, o texto indica.
 
 ---
 
@@ -8,29 +8,22 @@
 
 ### 1.1 O problema central
 
-Large Language Models têm capacidade crescente de gerar SQL a partir de linguagem natural (Text-to-SQL). Contudo, a grande maioria dos benchmarks acadêmicos consolidados — como Spider e BIRD — avalia os modelos em um único SGBD, tipicamente SQLite, e mede exclusivamente a **corretude** das queries geradas.
+Modelos de linguagem vêm sendo propostos para recomendar índices, tarefa que tradicionalmente depende do administrador de banco de dados ou de ferramentas apoiadas no modelo de custo do otimizador. A literatura que avalia essa abordagem concentra-se em um único SGBD, tipicamente PostgreSQL, e em cargas sintéticas (TPC-H, TPC-DS, JOB, DSB). Duas condições ficam pouco examinadas:
 
-Esse recorte ignora dois problemas práticos relevantes:
+1. **O sistema alvo.** O efeito de um índice depende do otimizador que decide usá-lo, e as restrições de criação variam entre sistemas.
+2. **A natureza da carga.** Esquemas sintéticos são regulares; esquemas reais não são.
 
-1. **Variabilidade de dialeto:** O SQL gerado para PostgreSQL não é o mesmo do SQLite. Funções de janela, tipos de dados, operadores de texto, comportamento de NULL e sintaxe de CTEs variam entre SGBDs. Um modelo pode gerar SQL correto para um SGBD e inválido para outro — e nenhum benchmark existente mede isso sistematicamente.
-
-2. **Eficiência da query gerada:** Um modelo pode gerar SQL sintaticamente correto e semanticamente equivalente ao gabarito, mas produzir um plano de execução ineficiente — fazendo full table scan onde um índice deveria ser usado, por exemplo. Métricas de corretude pura são cegas a esse problema.
-
-Este projeto nasce exatamente para preencher essas duas lacunas.
+Do lado da geração de SQL, os *benchmarks* consolidados de *text-to-SQL* (Spider, BIRD) conduzem sua avaliação de referência em SQLite, e a variação de dialeto entre SGBDs fica fora do que medem.
 
 ---
 
 ### 1.2 Recorte do TCC
 
-O objetivo não é construir o melhor sistema Text-to-SQL, mas sim **avaliar e comparar** o comportamento de cinco LLMs disponíveis comercialmente na tarefa de geração de SQL, cruzando duas dimensões:
+O trabalho **avalia** cinco modelos de linguagem na recomendação de índices para três SGBDs (SQLite, PostgreSQL e MariaDB), sobre os 11 bancos de esquema real do BIRD Mini-Dev. Não propõe um *advisor*: a recomendação sai de uma única interação, sem orçamento de armazenamento e sem refinamento iterativo.
 
-- **Modelo** (quem gerou o SQL)
-- **SGBD** (em qual banco o SQL foi executado)
+A carga sobre a qual os índices são avaliados é produzida pelo próprio modelo, que traduz para SQL as 500 perguntas do conjunto (*text-to-SQL*). Essa etapa fornece também o segundo resultado do trabalho: a acurácia da geração de SQL em cada SGBD.
 
-E medindo duas propriedades das queries geradas:
-
-- **Corretude** — a query produz o resultado correto?
-- **Eficiência** — o plano de execução gerado é eficiente?
+As três etapas (composição da carga, recomendação, efeito sobre a carga gerada) estão descritas no README e na §3.
 
 ---
 
@@ -52,21 +45,21 @@ O Spider testa se o modelo domina a **estrutura** do SQL. Para o nosso objetivo,
 
 ### 2.2 Por que o BIRD
 
-O **BIRD** (Big Bench for Large-scale Database Grounded Text-to-SQL Evaluation) foi lançado em 2023 e representa uma evolução significativa:
+O **BIRD** (*A BIg Bench for Large-Scale Database Grounded Text-to-SQLs*, Li et al., NeurIPS 2023) representa uma evolução significativa:
 
 | Dimensão | Spider | BIRD |
 |---|---|---|
-| Instâncias | ~10.181 | 12.751+ |
+| Instâncias | 10.181 | 12.751 |
 | SGBDs | SQLite | SQLite, MySQL, PostgreSQL |
-| Bancos de dados | 200 pequenos e limpos | 95 grandes, dados reais e "sujos" |
-| Domínios | Genéricos | 37+ profissionais (saúde, finanças, blockchain...) |
+| Bancos de dados | 200 pequenos e limpos | 95 grandes (33,4 GB), dados reais e "sujos" |
+| Domínios | Genéricos | 37 profissionais (saúde, finanças, blockchain...) |
 | Conhecimento externo | Não | Sim — `evidence` anotado por especialistas |
 | Métricas | EX + EM | EX + R-VES (eficiência) + Soft F1 |
 
 A diferença conceitual mais importante é o **evidence**: cada instância do BIRD inclui conhecimento de domínio que não está no schema do banco, mas é necessário para gerar a query correta. Por exemplo:
 
-> **Pergunta:** "Quantos clientes abriram conta na agência com menor salário médio?"
-> **Evidence:** "Menor salário médio refere-se à agência com `MIN(A11)`"
+> **Pergunta** (banco `financial`): "Name the account numbers of female clients who are oldest and have lowest average salary?"
+> **Evidence:** "Female refers to 'F' in the gender; A11 contains information about average salary"
 
 Sem esse conhecimento, a pergunta é ambígua. O BIRD reflete melhor cenários do mundo real, onde o usuário tem contexto de negócio que o modelo precisa incorporar.
 
@@ -79,7 +72,7 @@ O BIRD Mini-Dev é um subconjunto compacto do BIRD pensado para ciclos rápidos 
 - Dificuldade estratificada: 148 simples, 250 moderadas, 102 desafiadoras
 - Versões nativas para **SQLite, MySQL e PostgreSQL**, com as consultas de referência traduzidas para cada dialeto
 
-O pacote Mini-Dev também distribui 270 instâncias adicionais com operações CRUD e JSON. **Elas não foram usadas**: o trabalho emprega apenas as 500 consultas de leitura, carregadas pelo `download_dataset.py` a partir dos splits `mini_dev_sqlite`, `mini_dev_mysql` e `mini_dev_pg` do conjunto `birdsql/bird_mini_dev`.
+O trabalho emprega apenas as 500 consultas de leitura, carregadas pelo `download_dataset.py` a partir dos splits `mini_dev_sqlite`, `mini_dev_mysql` e `mini_dev_pg` do conjunto `birdsql/bird_mini_dev`.
 
 500 questões × 5 modelos × 3 SGBDs = **7.500 medições** na Etapa 1, volume viável para o orçamento de API de um TCC.
 
@@ -88,7 +81,7 @@ O pacote Mini-Dev também distribui 270 instâncias adicionais com operações C
 | O que o BIRD faz | Nossa adaptação |
 |---|---|
 | Suporta SQLite, MySQL, PostgreSQL | Substituímos MySQL por **MariaDB** |
-| Usa apenas APIs OpenAI/Azure | API nativa da Anthropic e OpenRouter (com provedor fixado) |
+| Scripts de referência voltados a um provedor | API nativa da Anthropic e OpenRouter (com provedor fixado) |
 | Métrica R-VES (razão de tempos gerada/referência) | Ganho de latência **antes e depois dos índices recomendados**, mais o plano de execução |
 | Avaliação offline em script único | Pipeline modular de três etapas com storage de resultados |
 
@@ -380,10 +373,10 @@ uv pip install -e ".[dev]"
 ### 5.1 Parâmetros de amostragem: o padrão de cada provedor
 
 O projeto pretendia fixar `temperature=0.0` em todos os modelos para garantir
-determinismo. **Isso não é realizável.** Os modelos Claude atuais rejeitam
-parâmetros de amostragem com HTTP 400, e o mesmo vale para os modelos de
-raciocínio de outros provedores. Não existe configuração de temperatura comum
-aos quatro provedores.
+determinismo. **Isso não é realizável.** O conector da Anthropic enviava o
+parâmetro e o Claude Sonnet 5 o rejeitou com HTTP 400; o OpenRouter, por sua
+vez, omite silenciosamente parâmetros que o provedor não suporta. Não existe
+configuração de temperatura comum aos provedores.
 
 A decisão é usar o padrão de cada provedor e **registrar a não-uniformidade
 como limitação do trabalho**: as respostas não são determinísticas e uma
@@ -396,7 +389,7 @@ trabalho se propõe a comparar.
 
 ### 5.2 Evidence como variável de controle
 
-O flag `BIRD_USE_EVIDENCE=true/false` permite rodar o benchmark nas duas condições e medir o impacto do conhecimento externo na acurácia. Isso adiciona uma dimensão de análise interessante para o TCC sem custo de implementação adicional.
+O flag `BIRD_USE_EVIDENCE=true/false` permite rodar o benchmark com ou sem o conhecimento de domínio no *prompt*. **Todas as rodadas do artigo usaram `true`**; a condição sem *evidence* não foi executada nem é reportada.
 
 ### 5.3 Separação entre latência LLM e latência de query
 

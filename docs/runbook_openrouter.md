@@ -1,10 +1,10 @@
 # Runbook — rodar a matriz via OpenRouter
 
 > Passo a passo operacional. Decidido em 31/08/2026: os modelos restantes são
-> acessados pelo OpenRouter; o Claude Sonnet 5, já fechado nas 9 células pela
-> API nativa da Anthropic, **não será reexecutado**.
+> acessados pelo OpenRouter; o Claude Sonnet 5, já fechado nas três combinações (três SGBDs × três
+> etapas) pela API nativa da Anthropic, **não será reexecutado**.
 >
-> Metodologia e resultados: `docs/pipeline_e_resultados.md`.
+> Resultados: `docs/resultados_matriz_completa.md`.
 
 ---
 

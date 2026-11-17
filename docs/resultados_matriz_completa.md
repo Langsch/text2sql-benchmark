@@ -10,7 +10,12 @@
 > 30/08/2026 e inclui desenvolvimento e retrabalho, não sendo o custo limpo das
 > três células.
 >
-> Metodologia e decisões: `docs/pipeline_e_resultados.md`.
+> **Como ler este documento.** É o registro de trabalho da rodada: traz os
+> resultados citados no artigo e também análises complementares que o artigo
+> não usa (Exact Match, erros por tipo, acurácia por dificuldade, defeitos
+> corrigidos). Os números que o artigo cita são conferidos automaticamente em
+> `analise/saida/numeros_do_artigo.md`; em caso de dúvida, vale o que está lá.
+>
 > Operação: `docs/runbook_openrouter.md`. Design: `docs/arquitetura.md`.
 
 ---
@@ -81,8 +86,8 @@ que é resultado de eficiência.
 | DeepSeek V4 Flash | MariaDB | 35 | 0 | 35 |
 
 **Os 13 timeouts estão todos no SQLite**, nenhum nos dois servidores. É
-coerente com a natureza dos motores: o SQLite não tem otimizador baseado em
-custo nem paralelismo.
+coerente com a natureza dos motores: o planejador do SQLite é mais simples que
+os dos dois servidores e não executa consultas em paralelo.
 
 **Totais da Etapa 1 nas 15 células:** 405 erros de execução, sendo 392
 `sql_error` e 13 `timeout`. As falhas de índice das Etapas 2 e 3 (233) são
@@ -194,8 +199,7 @@ A vantagem do SQLite sobre a média de PostgreSQL e MariaDB:
 | Gemini 3.1 Flash Lite | 7,2 pontos |
 | Qwen 3.8 27B | 6,4 pontos |
 
-Cinco modelos, cinco fornecedores, cinco arquiteturas — e o padrão não falha
-uma vez.
+Cinco modelos, de cinco fornecedores distintos — e o padrão não falha uma vez.
 
 **Implicação para a literatura:** Spider e BIRD avaliam em SQLite. A acurácia
 que esses benchmarks reportam superestima o desempenho em bancos de produção,
@@ -289,25 +293,21 @@ Contando apenas `sql_error`, sem os timeouts:
 | DeepSeek V4 Flash | 3,0 % | 5,6 % | 7,0 % |
 | Qwen 3.8 27B | 7,4 % | 13,2 % | 15,0 % |
 
-A ordem é estável nos três SGBDs e a taxa cresce do SQLite para os servidores
-em todos os modelos.
+O Qwen tem a maior taxa nos três SGBDs, e a taxa cresce do SQLite para os
+servidores em todos os modelos. A ordem dos demais muda de um SGBD para outro.
 
 > **Nota.** Uma versão anterior deste documento atribuía essa ordem ao porte
 > dos modelos. A atribuição foi retirada: o número de parâmetros é público
 > apenas para o Qwen (27B); os outros quatro são fechados. O padrão está
 > descrito, a causa fica em aberto.
 
-### 4.6 O tier econômico chega perto
-
-O Gemini 3.1 Flash Lite custa US$ 0,25/US$ 1,50 por milhão de tokens — cerca de
-um oitavo do Sonnet — e fica em segundo lugar nos três SGBDs, a 4,8 pontos do
-primeiro e 7,3 à frente do terceiro.
-
 ---
 
 ## 5. Defeitos encontrados e corrigidos
 
-Todos foram detectados **antes** de contaminar resultado publicado.
+Os sete primeiros foram detectados e corrigidos antes do fechamento da matriz.
+O §5.8 foi encontrado depois; o impacto foi medido e está descrito lá e no
+artigo.
 
 ### 5.1 Um provedor do OpenRouter corrompia o SQL
 
@@ -373,8 +373,9 @@ propósito, para não invalidar a comparação com a rodada já fechada do Sonne
 
 ### 5.7 Total de questões perdidas
 
-**3 de 7.500 (0,04 %)**, todas reprocessadas em 01/09/2026 após a correção das
-causas. Não há mais nenhuma medição inválida na matriz.
+**3 de 7.500 (0,04 %)**, todas reprocessadas na Etapa 1 em 01/09/2026 após a
+correção das causas. A Etapa 3 daquelas células já tinha rodado, e por isso
+essas três consultas não constam dela (§3.2).
 
 Uma quarta questão (Sonnet × SQLite, id 168) tinha erro sem classificação por
 ser anterior ao campo `error_type`. Era `sql_error` legítimo — `misuse of
@@ -391,7 +392,9 @@ Consequência: nas cinco células MariaDB das Etapas 2 e 3, nenhuma estatística
 foi recalculada após a criação dos índices. O artigo afirmava o contrário, e
 afirmava ainda que sem esse passo a medição ficaria inválida.
 
-**Impacto medido.** Quatro bancos do Sonnet × MariaDB foram remedidos em três
+**Impacto medido.** (Medição feita com o banco em execução em 20/09/2026; a
+saída não foi gravada em arquivo e por isso não é conferida por
+`analise/reproduzir.py`.) Quatro bancos do Sonnet × MariaDB foram remedidos em três
 estados — sem índices, com índices sem `ANALYZE` (o que a rodada publicada fez)
 e com índices após `ANALYZE TABLE` — em **duas réplicas independentes**:
 
@@ -441,11 +444,15 @@ Mais de uma ordem de grandeza em tokens de saída e em latência, para produzir
 seis linhas de SQL equivalentes. A estimativa de custo da matriz caiu de US$ 50 para os
 US$ 3,69 efetivamente gastos.
 
-**Justificativa metodológica:** a rodada nativa do Sonnet, que é a linha de
-base, praticamente não raciocinou, apesar de o thinking adaptativo da Anthropic
-vir ligado por padrão — a saída observada ficou na ordem de uma centena de
-tokens, contra os milhares dos modelos que raciocinam. Desligar o raciocínio
-nos demais aproxima a condição da linha de base em vez de afastá-la.
+**Raciocínio do Sonnet.** A rodada nativa do Sonnet usou o thinking adaptativo
+padrão da Anthropic. Chamadas de amostra da Etapa 1 mostraram saída da ordem de
+uma centena de tokens, mas a Etapa 1 não gravava tokens. A Etapa 2 grava, e
+mostra que o modelo **raciocinou de fato** ali: mediana de 1.549 (SQLite),
+3.506 (PostgreSQL) e 3.580 (MariaDB) tokens de saída por chamada, para
+respostas visíveis de cerca de 900 a 1.000 tokens. Nos quatro modelos do
+OpenRouter os tokens cobrados não excedem a resposta. Cálculo em
+`analise/saida/numeros_do_artigo.md`, §10. O artigo declara a assimetria e a
+ressalva sobre a liderança do Sonnet no ganho em PostgreSQL e MariaDB.
 
 > **Correção de 15/11/2026.** A API da Anthropic **permite** desligar o
 > raciocínio do Claude Sonnet 5 (`thinking: {type: "disabled"}`) e ajustar o
@@ -540,17 +547,16 @@ plano de execução, o provedor que atendeu e a classificação do erro — o
 suficiente para reproduzir ou reauditar qualquer número deste documento sem
 nova chamada de API.
 
-Os CSVs estão em `results/csv/<sgbd>/` por modelo e em
-`results/csv/comparativo/` para a visão entre modelos —
-`acuracia_por_modelo.csv`, `divergencias.csv` e `indices_por_modelo.csv`.
+O pacote público (`resultados.tar.gz`, na release do repositório) traz os
+JSONs de `results/runs/`. As tabelas derivadas em CSV estão no próprio
+repositório, em `analise/saida/csv/`, geradas por `analise/reproduzir.py`.
 
 ---
 
-## 8. Em aberto
+## 8. Teste estatístico
 
-- **Teste estatístico.** A inclusão no texto é decisão com o orientador. O
-  cálculo (McNemar pareado) está em `analise/reproduzir.py`, §8 do relatório
-  `analise/saida/numeros_do_artigo.md`: 7 das 10 duplas de modelos diferem
-  significativamente, e Qwen, Luna e DeepSeek não se separam entre si. Até a
-  decisão, os três devem ser tratados como um grupo, sem afirmar ordem entre
-  eles.
+- **Teste estatístico — incluído no artigo.** McNemar pareado com correção de
+  Bonferroni (§8 de `analise/saida/numeros_do_artigo.md`): 7 das 10 duplas de
+  modelos diferem significativamente, e Qwen, Luna e DeepSeek não se separam
+  entre si, por isso tratados como um grupo. SQLite contra cada servidor: 10
+  de 10 abaixo de 0,05, 9 de 10 após Bonferroni (exceção: Qwen × PostgreSQL).
